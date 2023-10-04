@@ -1,7 +1,7 @@
 # beads
 
 <div align="center">
-  <img src="images/beads-logo.jpeg" width="1000" height="750">
+  <img src="images/beads-logo.jpeg">
 </div>
 
 
