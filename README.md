@@ -5,8 +5,8 @@
 
 A micro-collaborative 'bead' ecosystem that enables multi-modal cognition, task autonomy and adaptive intelligence.
 
-| **`Blog`**                                                                          |
-|-------------------------------------------------------------------------------------|
-| [![Blog](https://img.shields.io/badge/Quick-Read-blue)](https://xipher19.github.io) |
+| **`Blog`**                                                                               |
+|------------------------------------------------------------------------------------------|
+| [![Blog](https://img.shields.io/badge/Reader-Friendly-blue)](https://xipher19.github.io) |
 
 # Beads Framework
