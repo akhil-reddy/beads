@@ -16,3 +16,7 @@ A micro-collaborative 'bead' ecosystem that enables multi-modal cognition, task 
 The project follows a coupled documentation style where 
 1. _README.md_ files represent the design and subjective documentation including opinions, thoughts, assumptions and ideas
 2. In-code documentation represents the isolated function description and details
+
+## License
+
+The Beads framework has a GPL 3.0 license, as found in the LICENSE file.
