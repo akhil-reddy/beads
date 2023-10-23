@@ -9,7 +9,7 @@ A micro-collaborative 'bead' ecosystem that enables multi-modal cognition, task 
 |------------------------------------------------------------------------------------------|
 | [![Blog](https://img.shields.io/badge/Reader-Friendly-blue)](https://xipher19.github.io) |
 
-# Beads Framework
+# [WIP] Beads Framework
 
 ## Documentation Style
 
