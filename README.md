@@ -20,3 +20,7 @@ The project follows a coupled documentation style where
 ## License
 
 The Beads framework has a GPL 3.0 license, as found in the LICENSE file.
+
+## Navigation
+
+## How to use?
