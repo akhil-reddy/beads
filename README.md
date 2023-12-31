@@ -26,8 +26,8 @@ The Beads framework is licensed under GPL 3.0, as found in the LICENSE file.
 
 ## Navigation
 
-* For Communication Beads, click [here](https://github.com/akhil-reddy/beads/tree/main/beads/components/cmu).
-* For Internal Environmental Response Beads, click [here](https://github.com/akhil-reddy/beads/tree/main/beads/components/eru).
+* For Communication Beads, click [here](https://github.com/akhil-reddy/beads/tree/main/beads/components/cmu)
+* For Internal Environmental Response Beads, click [here](https://github.com/akhil-reddy/beads/tree/main/beads/components/eru)
 * For Motivation Targets, click [here](https://github.com/akhil-reddy/beads/tree/main/beads/components/intent)
 * For Conduction Medium, click [here](https://github.com/akhil-reddy/beads/tree/main/beads/components/medium)
 
