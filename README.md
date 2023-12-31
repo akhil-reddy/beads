@@ -5,7 +5,7 @@
 
 A micro-collaborative 'bead' ecosystem that enables multi-modal cognition, task autonomy and adaptive intelligence.
 
-I would highly recommend a read through the below blog, for context on this project.
+For context on this project, I would highly recommend a read of the below blog.
 
 | **`Blog`**                                                                               |
 |------------------------------------------------------------------------------------------|
