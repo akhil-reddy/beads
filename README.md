@@ -5,6 +5,8 @@
 
 A micro-collaborative 'bead' ecosystem that enables multi-modal cognition, task autonomy and adaptive intelligence.
 
+I would highly recommend a read through the below blog, for context on this project.
+
 | **`Blog`**                                                                               |
 |------------------------------------------------------------------------------------------|
 | [![Blog](https://img.shields.io/badge/Reader-Friendly-blue)](https://xipher19.github.io) |
@@ -14,13 +16,21 @@ A micro-collaborative 'bead' ecosystem that enables multi-modal cognition, task 
 ## Documentation Style
 
 The project follows a coupled documentation style where 
-1. _README.md_ files describe the design and subjective documentation including opinions, thoughts, assumptions and ideas
+1. The _README.md_ files describe the design and subjective documentation including opinions, thoughts, assumptions and 
+ideas
 2. In-code documentation describes the isolated function description and details
 
 ## License
 
-The Beads framework has a GPL 3.0 license, as found in the LICENSE file.
+The Beads framework is licensed under GPL 3.0, as found in the LICENSE file.
 
 ## Navigation
 
+* For Communication Beads, click [here](https://github.com/akhil-reddy/beads/tree/main/beads/components/cmu).
+* For Internal Environmental Response Beads, click [here](https://github.com/akhil-reddy/beads/tree/main/beads/components/eru).
+* For Motivation Targets, click [here](https://github.com/akhil-reddy/beads/tree/main/beads/components/intent)
+* For Conduction Medium, click [here](https://github.com/akhil-reddy/beads/tree/main/beads/components/medium)
+
 ## How to use?
+
+All components aren't integrated yet. Please use them individually until further notice. 
