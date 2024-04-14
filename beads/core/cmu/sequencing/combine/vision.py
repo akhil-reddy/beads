@@ -8,3 +8,11 @@ After conversion, each unit / "drop" is combined with its neighbours based on si
 is dissolved, and they form a larger "drop".
 
 '''
+
+
+def convert():
+    pass
+
+
+def combine():
+    pass
