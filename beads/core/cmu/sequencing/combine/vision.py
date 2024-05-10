@@ -16,8 +16,9 @@ Convolutional Neural Network (CNN).
 Consider this datastructure:
 
 {
-    area: number
-    *pointers: list of all neighbours, but carefully mapped to a "sub number" in the area.
+    area: NUMBER, provides flexibility on the shape of the drop without describing the exact
+    shape, which is of secondary significance
+    *pointers: LIST of all neighbours, but carefully mapped to a "sub number" in the area.
     This esoteric structure should be equivalent to the Turing implementation of a "drop".
 }
 
