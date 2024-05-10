@@ -13,6 +13,14 @@ is dissolved, and they form a larger "drop".
 In a traditional ML sense, this operation is equivalent to channel preprocessing in a
 Convolutional Neural Network (CNN).
 
+Consider this datastructure:
+
+{
+    area: number
+    *pointers: list of all neighbours, but carefully mapped to a "sub number" in the area.
+    This esoteric structure should be equivalent to the Turing implementation of a "drop".
+}
+
 REQUIREMENT: The "quality" of this operation should match or exceed one of CNN.
 '''
 
