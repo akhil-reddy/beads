@@ -20,8 +20,7 @@ Consider this datastructure:
         shape, which is of secondary significance
     *pointers: LIST of all neighbours, but carefully mapped to a "sub number" in the area.
         This esoteric structure should be equivalent to the Turing implementation of a "drop".
-    stimulus: DATA, contains the RGB transformed structure for stimulus
-}
+    stimulus: DATA, contains the RGB transformed structure for stimulus.
 
 REQUIREMENT: The "quality" of this operation should match or exceed one of CNN.
 '''
