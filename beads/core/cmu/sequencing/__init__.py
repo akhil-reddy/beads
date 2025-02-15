@@ -15,6 +15,8 @@ class Cone:
                 & B, and B & C
             3. To extract the original tri-colours out, need to find B. However there is an assumption here that there
             exists enough of A & C to individually remove them from the boundary colour
+
+        Alternatively, use unsharp masking principles to increase brightness / "energy" at the boundaries
     """
     def __init__(self):
         pass
