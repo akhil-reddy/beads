@@ -6,6 +6,7 @@
 import math
 import random
 
+
 class Cell:
     """
     Represents a retinal cell.
@@ -16,11 +17,13 @@ class Cell:
         cell_type (str): The type of the cell ('rod' or 'cone').
         subtype (str or None): For cone cells, one of 'S', 'M', or 'L'. For rods, this is None.
     """
-    def __init__(self, x, y, cell_type, subtype=None):
+
+    def __init__(self, x, y, cell_type, subtype=None, activation_threshold=None):
         self.x = x
         self.y = y
         self.cell_type = cell_type  # "rod" or "cone"
-        self.subtype = subtype      # For cones: "S", "M", or "L"
+        self.subtype = subtype  # For cones: "S", "M", or "L"
+        self.activation_threshold = activation_threshold  # rods have a low threshold and cones have a high threshold
 
     def __repr__(self):
         if self.cell_type == "cone" and self.subtype:
@@ -38,6 +41,7 @@ class Retina:
         retina_radius (float): The maximum radius of the retina.
         fovea_radius (float): The radius of the cone-dense foveal region.
     """
+
     def __init__(self, cells, retina_radius, fovea_radius):
         self.cells = cells
         self.retina_radius = retina_radius
@@ -50,7 +54,7 @@ class Retina:
 
 def initialize_retina(retina_radius=1.0, fovea_radius_ratio=0.3, n_rings=30,
                       cone_prob_fovea=1.0, cone_prob_edge=0.05,
-                      cone_subtype_distribution={'S': 0.1, 'M': 0.45, 'L': 0.45}):
+                      cone_subtype_distribution=None):
     """
     Initializes a digital retina by distributing rods and cones on a circular (radial) manifold.
 
@@ -71,6 +75,8 @@ def initialize_retina(retina_radius=1.0, fovea_radius_ratio=0.3, n_rings=30,
     Returns:
         Retina: An instance of Retina with cells distributed in a radial pattern.
     """
+    if cone_subtype_distribution is None:
+        cone_subtype_distribution = {'S': 0.1, 'M': 0.45, 'L': 0.45}
     cells = []
     fovea_radius = retina_radius * fovea_radius_ratio
 
@@ -80,7 +86,8 @@ def initialize_retina(retina_radius=1.0, fovea_radius_ratio=0.3, n_rings=30,
             return cone_prob_fovea
         else:
             # Linearly interpolate from cone_prob_fovea at the fovea edge to cone_prob_edge at the retina edge.
-            return cone_prob_fovea + (cone_prob_edge - cone_prob_fovea) * ((r - fovea_radius) / (retina_radius - fovea_radius))
+            return cone_prob_fovea + (cone_prob_edge - cone_prob_fovea) * (
+                        (r - fovea_radius) / (retina_radius - fovea_radius))
 
     # Loop over concentric rings from the center (r = 0) to the outer edge (r = retina_radius).
     for i in range(n_rings + 1):
