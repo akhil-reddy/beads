@@ -7,6 +7,18 @@ import math
 import random
 
 
+class Cone:
+    """
+        In the fovea, make sure to use principles from loop subdivision to enrich the resolution of images as follows:
+            1. Let's suppose there are three photons carrying different colours A, B and C
+            2. If there exists only two cones to absorb those three photos, usually there's a merge between photon A
+                & B, and B & C
+            3. To extract the original tri-colours out, need to find B. However there is an assumption here that there
+            exists enough of A & C to individually remove them from the boundary colour
+    """
+    def __init__(self):
+        pass
+
 class Cell:
     """
     Represents a retinal cell.
@@ -16,6 +28,7 @@ class Cell:
         y (float): The y-coordinate of the cell.
         cell_type (str): The type of the cell ('rod' or 'cone').
         subtype (str or None): For cone cells, one of 'S', 'M', or 'L'. For rods, this is None.
+        activation_threshold: A minimum brightness level for that cell to pickup colour
     """
 
     def __init__(self, x, y, cell_type, subtype=None, activation_threshold=None):
