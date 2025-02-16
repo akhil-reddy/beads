@@ -9,17 +9,31 @@ import random
 
 class Cone:
     """
-        In the fovea, make sure to use principles from loop subdivision to enrich the resolution of images as follows:
-            1. Let's suppose there are three photons carrying different colours A, B and C
-            2. If there exists only two cones to absorb those three photos, usually there's a merge between photon A
-                & B, and B & C
-            3. To extract the original tri-colours out, need to find B. However there is an assumption here that there
-            exists enough of A & C to individually remove them from the boundary colour
-
-        Alternatively, use unsharp masking principles to increase brightness / "energy" at the boundaries
+        The Cones in the retina should exhibit three main properties:
+        1. They should have a high activation threshold and hence avoid noisy stray photons
+        2. They should map almost one-to-one onto bipolar cells i.e., Push implementation
+        3. They SHOULD have faster activation and deactivation kinetics
     """
+
     def __init__(self):
         pass
+
+
+class Rod:
+    """
+        The Rods in the retina should exhibit three main properties:
+        1. They should have a low activation threshold
+        2. They should map many-to-one onto bipolar cells i.e., Push implementation
+        3. They SHOULD have slower activation and deactivation kinetics. This slower response aids in integrating photon
+         signals over time, boosting sensitivity but sacrificing temporal resolution. In the biological retina, this is
+         done to ensure that the single photon from the scenery picked up by Rh* is not noise / stray photons
+         from the environment. HOWEVER, as modern digital sensor already incorporate this concept for low light vision,
+         we don't need to implement it
+    """
+
+    def __init__(self):
+        pass
+
 
 class Cell:
     """
@@ -102,7 +116,7 @@ def initialize_retina(retina_radius=1.0, fovea_radius_ratio=0.3, n_rings=30,
         else:
             # Linearly interpolate from cone_prob_fovea at the fovea edge to cone_prob_edge at the retina edge.
             return cone_prob_fovea + (cone_prob_edge - cone_prob_fovea) * (
-                        (r - fovea_radius) / (retina_radius - fovea_radius))
+                    (r - fovea_radius) / (retina_radius - fovea_radius))
 
     # Loop over concentric rings from the center (r = 0) to the outer edge (r = retina_radius).
     for i in range(n_rings + 1):
