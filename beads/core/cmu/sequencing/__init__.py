@@ -4,7 +4,6 @@
 """
 
 import math
-import random
 
 
 class Cone:
@@ -47,43 +46,39 @@ class Cell:
         activation_threshold: A minimum brightness level for that cell to pickup colour
     """
 
-    def __init__(self, x, y, cell_type, subtype=None, activation_threshold=None):
+    def __init__(self, x, y, cell_type, shape, subtype=None, activation_threshold=None):
         self.x = x
         self.y = y
-        self.cell_type = cell_type  # "rod" or "cone"
-        self.subtype = subtype  # For cones: "S", "M", or "L"
-        self.activation_threshold = activation_threshold  # rods have a low threshold and cones have a high threshold
+        self.cell_type = cell_type  # "cone" or "rod"
+        self.shape = shape          # "triangle" or "hexagon"
+        self.subtype = subtype
+        self.activation_threshold = activation_threshold
 
     def __repr__(self):
-        if self.cell_type == "cone" and self.subtype:
-            return f"Cone({self.subtype}) at (x={self.x:.2f}, y={self.y:.2f})"
-        else:
-            return f"{self.cell_type.capitalize()} at (x={self.x:.2f}, y={self.y:.2f})"
+        return f"{self.cell_type.capitalize()} ({self.shape}) at (x={self.x:.2f}, y={self.y:.2f})"
 
 
 class Retina:
     """
-    Represents a digital retina with a radial distribution of rods and cones.
+        Represents a digital retina based on a 2D hexagonal surface.
 
-    Attributes:
-        cells (list of Cell): A list of all retinal cells.
-        retina_radius (float): The maximum radius of the retina.
-        fovea_radius (float): The radius of the cone-dense foveal region.
+        Attributes:
+            cells (list of Cell): All cells in the retina.
+            surface_radius (float): The radius of the circular area covered.
+            cone_threshold (float): Hexagons with centers closer than this will be subdivided.
     """
 
-    def __init__(self, cells, retina_radius, fovea_radius):
+    def __init__(self, cells, surface_radius, cone_threshold):
         self.cells = cells
-        self.retina_radius = retina_radius
-        self.fovea_radius = fovea_radius
+        self.surface_radius = surface_radius
+        self.cone_threshold = cone_threshold
 
     def __repr__(self):
         return (f"Retina with {len(self.cells)} cells "
-                f"(retina radius: {self.retina_radius}, fovea radius: {self.fovea_radius}).")
+                f"(surface radius: {self.surface_radius}, cone threshold: {self.cone_threshold}).")
 
 
-def initialize_retina(retina_radius=1.0, fovea_radius_ratio=0.3, n_rings=30,
-                      cone_prob_fovea=1.0, cone_prob_edge=0.05,
-                      cone_subtype_distribution=None):
+def initialize_retina(surface_radius=1.0, cone_threshold=0.3, hex_size=0.1):
     """
     Initializes a digital retina by distributing rods and cones on a circular (radial) manifold.
 
@@ -94,75 +89,61 @@ def initialize_retina(retina_radius=1.0, fovea_radius_ratio=0.3, n_rings=30,
     probability distribution.
 
     Parameters:
-        retina_radius (float): The overall radius of the retina.
-        fovea_radius_ratio (float): The ratio (0-1) defining the fovea relative to retina_radius.
-        n_rings (int): Number of concentric rings used for discretizing the retina.
-        cone_prob_fovea (float): The probability a cell is a cone in the fovea (typically 1.0).
-        cone_prob_edge (float): The probability a cell is a cone at the retinal periphery.
-        cone_subtype_distribution (dict): A dict with keys 'S', 'M', 'L' and their associated probabilities.
+        surface_radius (float): Radius of the circular area.
+        cone_threshold (float): Distance threshold for subdivision.
+        hex_size (float): The "radius" of each hexagon (distance from center to a vertex).
 
     Returns:
-        Retina: An instance of Retina with cells distributed in a radial pattern.
+        Retina: An instance containing the generated cells.
     """
-    if cone_subtype_distribution is None:
-        cone_subtype_distribution = {'S': 0.1, 'M': 0.45, 'L': 0.45}
     cells = []
-    fovea_radius = retina_radius * fovea_radius_ratio
+    # For pointy-topped hexagons:
+    hex_width = math.sqrt(3) * hex_size
+    hex_height = 2 * hex_size
+    vertical_spacing = 0.75 * hex_height  # vertical distance between rows
 
-    # Define a function to compute the probability that a cell is a cone based on its radial distance.
-    def cone_probability(r):
-        if r <= fovea_radius:
-            return cone_prob_fovea
-        else:
-            # Linearly interpolate from cone_prob_fovea at the fovea edge to cone_prob_edge at the retina edge.
-            return cone_prob_fovea + (cone_prob_edge - cone_prob_fovea) * (
-                    (r - fovea_radius) / (retina_radius - fovea_radius))
+    # Determine row and column ranges to cover the area.
+    row_min = int(math.floor(-surface_radius / vertical_spacing))
+    row_max = int(math.ceil(surface_radius / vertical_spacing))
+    col_min = int(math.floor(-surface_radius / hex_width))
+    col_max = int(math.ceil(surface_radius / hex_width))
 
-    # Loop over concentric rings from the center (r = 0) to the outer edge (r = retina_radius).
-    for i in range(n_rings + 1):
-        # Compute the current radius for this ring.
-        r = retina_radius * i / n_rings
-
-        if i == 0:
-            # At the very center, add a single cone cell.
-            subtype = random.choices(
-                list(cone_subtype_distribution.keys()),
-                weights=list(cone_subtype_distribution.values())
-            )[0]
-            cells.append(Cell(0.0, 0.0, "cone", subtype))
-        else:
-            # Determine the number of cells along this ring based on its circumference.
-            circumference = 2 * math.pi * r
-            # Use a spacing factor (can be tuned) to determine how many cells to place.
-            spacing = retina_radius / n_rings
-            n_cells_in_ring = max(1, int(circumference / spacing))
-
-            for j in range(n_cells_in_ring):
-                theta = 2 * math.pi * j / n_cells_in_ring  # Evenly spaced angles.
-                x = r * math.cos(theta)
-                y = r * math.sin(theta)
-
-                # Decide cell type based on radial distance.
-                prob = cone_probability(r)
-                if random.random() < prob:
-                    cell_type = "cone"
-                    # Choose cone subtype according to the distribution.
-                    subtype = random.choices(
-                        list(cone_subtype_distribution.keys()),
-                        weights=list(cone_subtype_distribution.values())
-                    )[0]
-                    cells.append(Cell(x, y, cell_type, subtype))
+    for row in range(row_min, row_max + 1):
+        y = row * vertical_spacing
+        # Offset every other row for hexagonal tiling.
+        offset = hex_width / 2 if row % 2 != 0 else 0
+        for col in range(col_min, col_max + 1):
+            x = offset + col * hex_width
+            # Only include hexagon centers within the circular surface.
+            if math.sqrt(x*x + y*y) <= surface_radius:
+                distance = math.sqrt(x*x + y*y)
+                if distance < cone_threshold:
+                    # Subdivide the hexagon into 6 triangles.
+                    # First, compute the 6 vertices of the hexagon.
+                    vertices = []
+                    for k in range(6):
+                        angle = math.pi / 3 * k
+                        vx = x + hex_size * math.cos(angle)
+                        vy = y + hex_size * math.sin(angle)
+                        vertices.append((vx, vy))
+                    # Create 6 triangular cells by taking the center and each pair of adjacent vertices.
+                    for k in range(6):
+                        v1 = vertices[k]
+                        v2 = vertices[(k + 1) % 6]
+                        # Compute the centroid of the triangle (for illustrative positioning).
+                        cx = (x + v1[0] + v2[0]) / 3.0
+                        cy = (y + v1[1] + v2[1]) / 3.0
+                        cells.append(Cell(cx, cy, cell_type="cone", shape="triangle"))
                 else:
-                    cell_type = "rod"
-                    cells.append(Cell(x, y, cell_type))
+                    # Outside the threshold, keep the hexagon as a single rod.
+                    cells.append(Cell(x, y, cell_type="rod", shape="hexagon"))
 
-    return Retina(cells, retina_radius, fovea_radius)
+    return Retina(cells, surface_radius, cone_threshold)
 
 
 # Example usage:
 if __name__ == "__main__":
-    retina = initialize_retina()
+    retina = initialize_retina(surface_radius=1.0, cone_threshold=0.3, hex_size=0.1)
     print(retina)
-    # Optionally, inspect each cell.
     for cell in retina.cells:
         print(cell)
