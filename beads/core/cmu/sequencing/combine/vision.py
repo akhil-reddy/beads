@@ -1,7 +1,7 @@
 """
 The combine operation of the Push Implementation (refer Turing Beads.good-notes)
 
-In this operation, the RGB stimulus is converted into a lightweight "beehive" like structure. This structure
+Before this operation, the RGB stimulus is converted into a lightweight "beehive" like structure. This structure
 is analogous to a set of coloured rain drops separated by a membrane.
 
 After conversion, each unit / "drop" is combined with its neighbours based on similarity. The membrane
@@ -14,7 +14,7 @@ In the fovea, make sure to use principles from loop subdivision to enrich the re
     3. To extract the original tri-colours out, need to find B. However there is an assumption here that there
     exists enough of A & C to individually remove them from the boundary colour
 
-Alternatively, use unsharp masking principles to increase brightness / "energy" at the boundaries. Horizontal
+ALTERNATIVELY, use unsharp masking principles to increase brightness / "energy" at the boundaries. Horizontal
 cells spread their signals laterally to inhibit nearby photoreceptors. This “lateral inhibition” improves
 contrast and sharpens edges. Essentially, after bipolar cell processing, horizontal cells makes the stimulus
 interact constructively / destructively so that "context" spreads out horizontally.

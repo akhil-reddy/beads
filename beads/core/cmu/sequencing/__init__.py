@@ -78,7 +78,8 @@ class Retina:
                 f"(surface radius: {self.surface_radius}, cone threshold: {self.cone_threshold}).")
 
 
-def initialize_retina(surface_radius=1.0, cone_threshold=0.3, hex_size=0.1):
+# Ratios are consistent with human eye geometry
+def initialize_retina(surface_radius=1248.0, cone_threshold=208.0, hex_size=1.0):
     """
     Initializes a digital retina by distributing rods and cones on a circular (radial) manifold.
 
@@ -135,8 +136,19 @@ def initialize_retina(surface_radius=1.0, cone_threshold=0.3, hex_size=0.1):
                         cy = (y + v1[1] + v2[1]) / 3.0
                         cells.append(Cell(cx, cy, cell_type="cone", shape="triangle"))
                 else:
-                    # Outside the threshold, keep the hexagon as a single rod.
-                    cells.append(Cell(x, y, cell_type="rod", shape="hexagon"))
+                    # Outside the fovea: divide the hexagon into 3 equal parallelograms.
+                    # For a pointy-topped hexagon of "radius" hex_size,
+                    # the distance between parallel sides is hex_size * sqrt(3).
+                    # One-third of that distance is: hex_size / sqrt(3).
+                    # We choose the subdivision direction along 30° (unit vector u = (cos30, sin30)).
+                    u_x = math.cos(math.radians(30))  # √3/2
+                    u_y = math.sin(math.radians(30))  # 1/2
+                    offset_distance = hex_size / math.sqrt(3)
+                    for factor in [-1, 0, 1]:
+                        cx = x + factor * offset_distance * u_x
+                        cy = y + factor * offset_distance * u_y
+                        cells.append(Cell(cx, cy, cell_type="rod", shape="parallelogram"))
+
 
     return Retina(cells, surface_radius, cone_threshold)
 
