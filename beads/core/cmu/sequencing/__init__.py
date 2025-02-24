@@ -153,9 +153,10 @@ def initialize_retina(surface_radius=1248.0, cone_threshold=208.0, hex_size=1.0)
     return Retina(cells, surface_radius, cone_threshold)
 
 
-# Example usage:
 if __name__ == "__main__":
     retina = initialize_retina(surface_radius=1.0, cone_threshold=0.3, hex_size=0.1)
     print(retina)
     for cell in retina.cells:
         print(cell)
+
+    # Initialize the Cochlea
