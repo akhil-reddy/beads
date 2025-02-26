@@ -9,8 +9,10 @@ import math
 class Cone:
     """
         The Cones in the retina should exhibit three main properties:
-        1. They should have a high activation threshold and hence avoid noisy stray photons
-        2. They should map almost one-to-one onto bipolar cells i.e., Push implementation
+        1. They should have a high activation threshold and hence avoid noisy stray photons (many false negatives)
+        2. They should map almost one-to-one onto bipolar cells i.e., Push implementation. This is done via having
+        high sensitivity to different combinations of colours. Imagine a friend who considers red and crimson the same
+        colour and someone with better color sensitivity. This difference is primarily due to cone stimulus registration
         3. They SHOULD have faster activation and deactivation kinetics
     """
 
@@ -21,13 +23,14 @@ class Cone:
 class Rod:
     """
         The Rods in the retina should exhibit three main properties:
-        1. They should have a low activation threshold
-        2. They should map many-to-one onto bipolar cells i.e., Push implementation
+        1. They should have a low activation threshold (many false positives)
+        2. They should map many-to-one onto bipolar cells i.e., Push implementation. This is done by having low
+        sensitivity to different colours with flatter overlapping distributions (negative kurtosis)
         3. They SHOULD have slower activation and deactivation kinetics. This slower response aids in integrating photon
          signals over time, boosting sensitivity but sacrificing temporal resolution. In the biological retina, this is
          done to ensure that the single photon from the scenery picked up by Rh* is not noise / stray photons
          from the environment. HOWEVER, as modern digital sensor already incorporate this concept for low light vision,
-         we don't need to implement it
+         we don't need to implement it yet
     """
 
     def __init__(self):
@@ -50,7 +53,7 @@ class Cell:
         self.x = x
         self.y = y
         self.cell_type = cell_type  # "cone" or "rod"
-        self.shape = shape          # "triangle" or "hexagon"
+        self.shape = shape  # "triangle" or "hexagon"
         self.subtype = subtype
         self.activation_threshold = activation_threshold
 
@@ -116,8 +119,8 @@ def initialize_retina(surface_radius=1248.0, cone_threshold=208.0, hex_size=1.0)
         for col in range(col_min, col_max + 1):
             x = offset + col * hex_width
             # Only include hexagon centers within the circular surface.
-            if math.sqrt(x*x + y*y) <= surface_radius:
-                distance = math.sqrt(x*x + y*y)
+            if math.sqrt(x * x + y * y) <= surface_radius:
+                distance = math.sqrt(x * x + y * y)
                 if distance < cone_threshold:
                     # Subdivide the hexagon into 6 triangles.
                     # First, compute the 6 vertices of the hexagon.
@@ -148,7 +151,6 @@ def initialize_retina(surface_radius=1248.0, cone_threshold=208.0, hex_size=1.0)
                         cx = x + factor * offset_distance * u_x
                         cy = y + factor * offset_distance * u_y
                         cells.append(Cell(cx, cy, cell_type="rod", shape="parallelogram"))
-
 
     return Retina(cells, surface_radius, cone_threshold)
 
