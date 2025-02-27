@@ -5,104 +5,162 @@
 
 import math
 import random
+import numpy as np
 
 
-def gaussian_response(wavelength, mu, sigma):
-    """Returns the sensitivity value (between 0 and 1) for a given wavelength."""
-    return math.exp(-((wavelength - mu) ** 2) / (2 * sigma ** 2))
+def govardovskii_nomogram(wavelength, lambda_max):
+    """
+    Calculates the relative spectral sensitivity of a visual pigment
+    using a Govardovskii nomogram–like function.
+
+    The provided implementation is a simplified version.
+
+    Args:
+        wavelength (numpy.ndarray or float): Wavelength(s) in nanometers.
+        lambda_max (float): Peak absorbance wavelength (nm) for the pigment.
+
+    Returns:
+         numpy.ndarray or float: Relative sensitivity.
+    """
+    # Fixed constant in the template (from literature, e.g., Govardovskii et al., 2000)
+    k = 69.7
+    # The function below yields an asymmetric curve.
+    return np.exp(3.21 * np.log(k / wavelength)
+                  - 0.485 * (np.log(k / wavelength)) ** 2
+                  + 9.71e-3 * (np.log(k / wavelength)) ** 3)
+
+
+def spectral_sensitivity(wavelength, lambda_max):
+    """
+    Adjusts the wavelength input to shift the Govardovskii nomogram so that its
+    peak sensitivity occurs at lambda_max.
+
+    We scale the wavelength by (500/lambda_max) so that when lambda_max == 500 nm,
+    no shift occurs. For other lambda_max values, the effective curve is shifted.
+
+    Args:
+        wavelength (float): The wavelength to evaluate (nm).
+        lambda_max (float): The pigment's peak wavelength (nm).
+
+    Returns:
+        float: Sensitivity at the given wavelength.
+    """
+    effective_wavelength = wavelength * (500.0 / lambda_max)
+    return govardovskii_nomogram(effective_wavelength, lambda_max)
 
 
 class Cone:
     """
-        The Cones in the retina should exhibit three main properties:
-        1. They should have a high activation threshold and hence avoid noisy stray photons (many false negatives)
-        2. They should map almost one-to-one onto bipolar cells i.e., Push implementation. This is done via having
-        high sensitivity to different combinations of colours. Imagine a friend who considers red and crimson the same
-        colour and someone with better color sensitivity. This difference is primarily due to cone stimulus registration
-        3. They SHOULD have faster activation and deactivation kinetics
+    Cone photoreceptors for color vision:
+      1. High activation threshold (around 100 photon–equivalents) so that low-intensity noise (many false negatives)
+      is ignored
+      2. They have a nearly one-to-one mapping onto bipolar cells i.e., Push implementation
+      3. They show distinct spectral sensitivity (using a narrow Govardovskii nomogram). Imagine a friend who considers
+      red and crimson the same colour and someone with better color sensitivity. This difference is primarily
+      due to cone stimulus registration
+      4. They SHOULD have faster activation and deactivation kinetics
+
+
+    Attributes:
+        threshold (float): Minimum brightness required for activation.
+        lambda_max (float): Peak sensitivity wavelength (nm) (depends on subtype).
+        subtype (str): 'S', 'M', or 'L'.
+        sigma_factor (float): Factor determining the "narrowness" of the sensitivity curve.
     """
+
     def __init__(self, subtype=None, threshold=100):
-        self.threshold = threshold  # High threshold: requires strong stimulus.
-        # Choose subtype if not provided (default human ratios: ~10% S, ~45% M, ~45% L)
+        self.threshold = threshold  # Based on research, cones require high photon counts.
         self.subtype = (subtype if subtype in ['S', 'M', 'L']
                         else random.choices(['S', 'M', 'L'], weights=[0.1, 0.45, 0.45])[0])
-        # Define the Gaussian parameters based on the subtype.
+        # Set peak wavelengths based on subtype:
         if self.subtype == "S":
-            self.mu = 420  # nm peak for short-wavelength cones
-            self.sigma = 20
+            self.lambda_max = 420  # nm
         elif self.subtype == "M":
-            self.mu = 530  # nm peak for medium-wavelength cones
-            self.sigma = 20
+            self.lambda_max = 530  # nm
         elif self.subtype == "L":
-            self.mu = 560  # nm peak for long-wavelength cones
-            self.sigma = 20
+            self.lambda_max = 560  # nm
+
+        # For cones, we use a relatively narrow sensitivity curve.
+        self.sigma_factor = 0.07  # (Not used explicitly; the nomogram shape is fixed.)
 
     def process_pixel(self, brightness, wavelength):
         """
-        Process a pixel with a given brightness and wavelength.
+        Processes a pixel by computing the response based on its brightness and wavelength.
 
-        Parameters:
-            brightness (float): The intensity of the pixel.
-            wavelength (float): The dominant wavelength (in nm) of the pixel.
+        For cones, if brightness is below the high threshold, the output is 0 (false negative).
+
+        Args:
+            brightness (float): Brightness (photon equivalents).
+            wavelength (float): Dominant wavelength (nm) of the pixel.
 
         Returns:
-            float: The response output. If brightness is below threshold, returns 0.
+            float: Response magnitude.
         """
-        # Only respond if the brightness exceeds the high cone threshold.
         if brightness < self.threshold:
             return 0.0
-        # Compute the spectral response based on the cone's Gaussian sensitivity.
-        response = brightness * gaussian_response(wavelength, self.mu, self.sigma)
-        return response
+        # Compute the spectral response using the Govardovskii nomogram.
+        spectral_response = spectral_sensitivity(wavelength, self.lambda_max)
+        # Response is proportional to the excess brightness above threshold times the spectral sensitivity.
+        return (brightness - self.threshold) * spectral_response
 
     def __repr__(self):
-        return f"Cone({self.subtype}) [threshold={self.threshold}, μ={self.mu}, σ={self.sigma}]"
+        return (f"Cone({self.subtype}) [λ_max={self.lambda_max}nm, threshold={self.threshold}]")
 
 
 class Rod:
     """
-        The Rods in the retina should exhibit three main properties:
-        1. They should have a low activation threshold (many false positives)
-        2. They should map many-to-one onto bipolar cells i.e., Push implementation. This is done by having low
-        sensitivity to different colours with flatter overlapping distributions (negative kurtosis)
-        3. They SHOULD have slower activation and deactivation kinetics. This slower response aids in integrating photon
-         signals over time, boosting sensitivity but sacrificing temporal resolution. In the biological retina, this is
-         done to ensure that the single photon from the scenery picked up by Rh* is not noise / stray photons
-         from the environment. HOWEVER, as modern digital sensor already incorporate this concept for low light vision,
-         we don't need to implement it yet
+    Rod photoreceptors for low-light vision:
+      1. Very low activation threshold (near 1 photon–equivalent) so that even dim light is detected (many false
+      positives)
+      2. They converge many-to-one onto bipolar cells i.e., Push implementation
+      3. They use a broader Govardovskii nomogram (flatter, overlapping curve) for spectral sensitivity.
+      4. They integrate signal over multiple iterations (to reduce false positives from noise). They SHOULD have
+        slower activation and deactivation kinetics. This slower response aids in integrating photon
+        signals over time, boosting sensitivity but sacrificing temporal resolution. In the biological retina, this is
+        done to ensure that the single photon from the scenery picked up by Rh* is not noise / stray photons
+        from the environment. HOWEVER, as modern digital sensor already incorporate this concept for low light vision,
+        we don't need to implement it yet
+
+    Attributes:
+        threshold (float): Minimal brightness needed (set to 1 photon–equivalent).
+        lambda_max (float): Peak sensitivity, typically around 500 nm.
+        sigma_factor (float): Determines curve width (broader than cones).
+        n_iterations (int): Number of iterations for signal integration.
     """
-    def __init__(self, threshold=10):
-        self.threshold = threshold  # Low threshold: even faint pixels trigger a response.
-        # Define three overlapping Gaussian curves to represent rod sensitivity.
-        # Here, the peaks are close together and sigma is larger (flatter curve).
-        self.gaussians = [
-            {"mu": 490, "sigma": 40},
-            {"mu": 500, "sigma": 40},
-            {"mu": 510, "sigma": 40},
-        ]
+
+    def __init__(self, threshold=1, n_iterations=10):
+        self.threshold = threshold  # Rods can be activated by single photons.
+        self.lambda_max = 500  # nm: typical for rods.
+        self.sigma_factor = 0.2  # Broader curve.
+        self.n_iterations = n_iterations
 
     def process_pixel(self, brightness, wavelength):
         """
-        Process a pixel with a given brightness and wavelength.
+        Processes a pixel for a rod by averaging over several iterations to simulate temporal integration.
 
-        Parameters:
-            brightness (float): The intensity of the pixel.
-            wavelength (float): The dominant wavelength (in nm) of the pixel.
+        Args:
+            brightness (float): Pixel brightness (photon equivalents).
+            wavelength (float): Dominant wavelength (nm).
 
         Returns:
-            float: The average response output from the three overlapping Gaussians.
-
-        Note: Even very low brightness values are processed due to the low threshold,
-              potentially resulting in false positives.
+            float: Averaged response magnitude.
         """
         responses = []
-        for g in self.gaussians:
-            responses.append(brightness * gaussian_response(wavelength, g["mu"], g["sigma"]))
-        avg_response = sum(responses) / len(responses)
-        return avg_response
+        for _ in range(self.n_iterations):
+            # Introduce a small amount of noise to simulate stochastic photon absorption.
+            noisy_brightness = brightness * random.uniform(0.9, 1.1)
+            if noisy_brightness < self.threshold:
+                responses.append(0.0)
+            else:
+                response = (noisy_brightness - self.threshold) * \
+                           spectral_sensitivity(wavelength, self.lambda_max)
+                responses.append(response)
+        return sum(responses) / self.n_iterations
 
     def __repr__(self):
-        return f"Rod [threshold={self.threshold}, gaussians={self.gaussians}]"
+        return (f"Rod [λ_max={self.lambda_max}nm, threshold={self.threshold}, "
+                f"iterations={self.n_iterations}]")
+
 
 class Cell:
     """
