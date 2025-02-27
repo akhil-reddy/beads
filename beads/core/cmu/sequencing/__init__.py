@@ -4,6 +4,12 @@
 """
 
 import math
+import random
+
+
+def gaussian_response(wavelength, mu, sigma):
+    """Returns the sensitivity value (between 0 and 1) for a given wavelength."""
+    return math.exp(-((wavelength - mu) ** 2) / (2 * sigma ** 2))
 
 
 class Cone:
@@ -15,9 +21,42 @@ class Cone:
         colour and someone with better color sensitivity. This difference is primarily due to cone stimulus registration
         3. They SHOULD have faster activation and deactivation kinetics
     """
+    def __init__(self, subtype=None, threshold=100):
+        self.threshold = threshold  # High threshold: requires strong stimulus.
+        # Choose subtype if not provided (default human ratios: ~10% S, ~45% M, ~45% L)
+        self.subtype = (subtype if subtype in ['S', 'M', 'L']
+                        else random.choices(['S', 'M', 'L'], weights=[0.1, 0.45, 0.45])[0])
+        # Define the Gaussian parameters based on the subtype.
+        if self.subtype == "S":
+            self.mu = 420  # nm peak for short-wavelength cones
+            self.sigma = 20
+        elif self.subtype == "M":
+            self.mu = 530  # nm peak for medium-wavelength cones
+            self.sigma = 20
+        elif self.subtype == "L":
+            self.mu = 560  # nm peak for long-wavelength cones
+            self.sigma = 20
 
-    def __init__(self):
-        pass
+    def process_pixel(self, brightness, wavelength):
+        """
+        Process a pixel with a given brightness and wavelength.
+
+        Parameters:
+            brightness (float): The intensity of the pixel.
+            wavelength (float): The dominant wavelength (in nm) of the pixel.
+
+        Returns:
+            float: The response output. If brightness is below threshold, returns 0.
+        """
+        # Only respond if the brightness exceeds the high cone threshold.
+        if brightness < self.threshold:
+            return 0.0
+        # Compute the spectral response based on the cone's Gaussian sensitivity.
+        response = brightness * gaussian_response(wavelength, self.mu, self.sigma)
+        return response
+
+    def __repr__(self):
+        return f"Cone({self.subtype}) [threshold={self.threshold}, μ={self.mu}, σ={self.sigma}]"
 
 
 class Rod:
@@ -32,10 +71,38 @@ class Rod:
          from the environment. HOWEVER, as modern digital sensor already incorporate this concept for low light vision,
          we don't need to implement it yet
     """
+    def __init__(self, threshold=10):
+        self.threshold = threshold  # Low threshold: even faint pixels trigger a response.
+        # Define three overlapping Gaussian curves to represent rod sensitivity.
+        # Here, the peaks are close together and sigma is larger (flatter curve).
+        self.gaussians = [
+            {"mu": 490, "sigma": 40},
+            {"mu": 500, "sigma": 40},
+            {"mu": 510, "sigma": 40},
+        ]
 
-    def __init__(self):
-        pass
+    def process_pixel(self, brightness, wavelength):
+        """
+        Process a pixel with a given brightness and wavelength.
 
+        Parameters:
+            brightness (float): The intensity of the pixel.
+            wavelength (float): The dominant wavelength (in nm) of the pixel.
+
+        Returns:
+            float: The average response output from the three overlapping Gaussians.
+
+        Note: Even very low brightness values are processed due to the low threshold,
+              potentially resulting in false positives.
+        """
+        responses = []
+        for g in self.gaussians:
+            responses.append(brightness * gaussian_response(wavelength, g["mu"], g["sigma"]))
+        avg_response = sum(responses) / len(responses)
+        return avg_response
+
+    def __repr__(self):
+        return f"Rod [threshold={self.threshold}, gaussians={self.gaussians}]"
 
 class Cell:
     """
