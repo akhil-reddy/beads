@@ -8,23 +8,20 @@ import random
 import numpy as np
 
 
+# -- Govardovskii nomogram functions ------------------------------------------
 def govardovskii_nomogram(wavelength, lambda_max):
     """
-    Calculates the relative spectral sensitivity of a visual pigment
-    using a Govardovskii nomogram–like function.
-
-    The provided implementation is a simplified version.
+    Calculates the relative spectral sensitivity using a Govardovskii nomogram template.
+    (This is a simplified version.)
 
     Args:
         wavelength (numpy.ndarray or float): Wavelength(s) in nanometers.
-        lambda_max (float): Peak absorbance wavelength (nm) for the pigment.
+        lambda_max (float): The peak absorbance wavelength (nm) for the pigment.
 
     Returns:
          numpy.ndarray or float: Relative sensitivity.
     """
-    # Fixed constant in the template (from literature, e.g., Govardovskii et al., 2000)
     k = 69.7
-    # The function below yields an asymmetric curve.
     return np.exp(3.21 * np.log(k / wavelength)
                   - 0.485 * (np.log(k / wavelength)) ** 2
                   + 9.71e-3 * (np.log(k / wavelength)) ** 3)
@@ -32,22 +29,79 @@ def govardovskii_nomogram(wavelength, lambda_max):
 
 def spectral_sensitivity(wavelength, lambda_max):
     """
-    Adjusts the wavelength input to shift the Govardovskii nomogram so that its
-    peak sensitivity occurs at lambda_max.
-
-    We scale the wavelength by (500/lambda_max) so that when lambda_max == 500 nm,
-    no shift occurs. For other lambda_max values, the effective curve is shifted.
+    Shifts the Govardovskii nomogram so that the peak occurs at lambda_max.
 
     Args:
-        wavelength (float): The wavelength to evaluate (nm).
-        lambda_max (float): The pigment's peak wavelength (nm).
+        wavelength (float or np.ndarray): Wavelength(s) in nm.
+        lambda_max (float): Peak sensitivity wavelength in nm.
 
     Returns:
-        float: Sensitivity at the given wavelength.
+        float or np.ndarray: Relative sensitivity.
     """
+    # This simple approach scales the input wavelength so that when lambda_max==500 nm, no shift occurs.
     effective_wavelength = wavelength * (500.0 / lambda_max)
     return govardovskii_nomogram(effective_wavelength, lambda_max)
 
+
+# -- HSP Brightness (from alienryderflex.com) -------------------------------
+def hsp_brightness(R, G, B):
+    """
+    Calculate perceived brightness using the HSP model.
+
+    Args:
+        R, G, B (float): Red, Green, Blue components (0-255).
+
+    Returns:
+        float: Perceived brightness.
+    """
+    return math.sqrt(0.299 * (R ** 2) + 0.587 * (G ** 2) + 0.114 * (B ** 2))
+
+
+# -- Conversion from RGB to Luminance ----------------------------------------
+def rgb_to_luminance(R, G, B, L_max=300, gamma=2.2):
+    """
+    Converts an RGB triplet into an estimated luminance (cd/m²) using the HSP model.
+    Assumes that (255,255,255) corresponds to L_max cd/m².
+
+    Args:
+        R, G, B (int): RGB values (0-255).
+        L_max (float): Maximum luminance (cd/m²) for white.
+        gamma (float): Display gamma.
+
+    Returns:
+        float: Estimated luminance in cd/m².
+    """
+    # Compute perceived brightness (HSP).
+    perceived = hsp_brightness(R, G, B)
+    # Maximum perceived brightness for (255,255,255)
+    max_perceived = hsp_brightness(255, 255, 255)
+    # Normalize to [0, 1]
+    norm = perceived / max_perceived
+    # Apply gamma correction and scale to L_max.
+    return (norm ** gamma) * L_max
+
+
+def luminance_to_photoisomerizations(luminance, pupil_diameter_mm=3.0,
+                                     conversion_factor=1.0, ocular_transmittance=0.9):
+    """
+    Estimate the number of photoisomerizations per receptor per second from luminance.
+
+    Args:
+        luminance (float): Luminance in cd/m².
+        pupil_diameter_mm (float): Pupil diameter in mm (assumed circular).
+        conversion_factor (float): Photoisomerizations per receptor per troland per second.
+        ocular_transmittance (float): Fraction of light transmitted (default 0.9).
+
+    Returns:
+        float: Photoisomerizations per receptor per second.
+    """
+    pupil_area = math.pi * (pupil_diameter_mm / 2.0) ** 2  # in mm²
+    # 1 troland = 1 cd/m²·mm²
+    trolands = luminance * pupil_area
+    return conversion_factor * trolands * ocular_transmittance
+
+
+# -- Photoreceptor Classes ----------------------------------------------------
 
 class Cone:
     """
@@ -63,48 +117,46 @@ class Cone:
 
     Attributes:
         threshold (float): Minimum brightness required for activation.
-        lambda_max (float): Peak sensitivity wavelength (nm) (depends on subtype).
-        subtype (str): 'S', 'M', or 'L'.
-        sigma_factor (float): Factor determining the "narrowness" of the sensitivity curve.
+        subtype (str): 'S', 'M', or 'L'
     """
 
     def __init__(self, subtype=None, threshold=100):
-        self.threshold = threshold  # Based on research, cones require high photon counts.
+        self.threshold = threshold
         self.subtype = (subtype if subtype in ['S', 'M', 'L']
                         else random.choices(['S', 'M', 'L'], weights=[0.1, 0.45, 0.45])[0])
-        # Set peak wavelengths based on subtype:
-        if self.subtype == "S":
+        if self.subtype == 'S':
             self.lambda_max = 420  # nm
-        elif self.subtype == "M":
+        elif self.subtype == 'M':
             self.lambda_max = 530  # nm
-        elif self.subtype == "L":
+        elif self.subtype == 'L':
             self.lambda_max = 560  # nm
 
-        # For cones, we use a relatively narrow sensitivity curve.
-        self.sigma_factor = 0.07  # (Not used explicitly; the nomogram shape is fixed.)
+    """
+    Process an RGB pixel given a dominant wavelength (nm) of the stimulus.
+    Only processes if the estimated brightness exceeds the cone threshold.
 
-    def process_pixel(self, brightness, wavelength):
-        """
-        Processes a pixel by computing the response based on its brightness and wavelength.
+    Args:
+        R, G, B (int): RGB values (0-255).
+        wavelength (float): Dominant wavelength (nm).
 
-        For cones, if brightness is below the high threshold, the output is 0 (false negative).
+    Returns:
+        float: Response magnitude (photoisomerizations per receptor per second).
+    """
+    def process_pixel(self, R, G, B, wavelength):
 
-        Args:
-            brightness (float): Brightness (photon equivalents).
-            wavelength (float): Dominant wavelength (nm) of the pixel.
-
-        Returns:
-            float: Response magnitude.
-        """
-        if brightness < self.threshold:
+        # Convert RGB to luminance (using default calibration assumptions)
+        luminance = rgb_to_luminance(R, G, B)
+        # Estimate photoisomerizations (using default conversion factor for cones)
+        photoisom = luminance_to_photoisomerizations(luminance, conversion_factor=100.0)
+        # Apply cone threshold: if below threshold, response is 0.
+        if photoisom < self.threshold:
             return 0.0
-        # Compute the spectral response using the Govardovskii nomogram.
-        spectral_response = spectral_sensitivity(wavelength, self.lambda_max)
-        # Response is proportional to the excess brightness above threshold times the spectral sensitivity.
-        return (brightness - self.threshold) * spectral_response
+        # Weight by spectral sensitivity using the Govardovskii nomogram.
+        spectral_weight = spectral_sensitivity(wavelength, self.lambda_max)
+        return (photoisom - self.threshold) * spectral_weight
 
     def __repr__(self):
-        return (f"Cone({self.subtype}) [λ_max={self.lambda_max}nm, threshold={self.threshold}]")
+        return f"Cone({self.subtype}) [λ_max={self.lambda_max}nm, threshold={self.threshold}]"
 
 
 class Rod:
@@ -123,43 +175,41 @@ class Rod:
 
     Attributes:
         threshold (float): Minimal brightness needed (set to 1 photon–equivalent).
-        lambda_max (float): Peak sensitivity, typically around 500 nm.
-        sigma_factor (float): Determines curve width (broader than cones).
         n_iterations (int): Number of iterations for signal integration.
     """
 
     def __init__(self, threshold=1, n_iterations=10):
-        self.threshold = threshold  # Rods can be activated by single photons.
-        self.lambda_max = 500  # nm: typical for rods.
-        self.sigma_factor = 0.2  # Broader curve.
+        self.threshold = threshold
+        self.lambda_max = 500  # nm typical for rods.
         self.n_iterations = n_iterations
 
-    def process_pixel(self, brightness, wavelength):
-        """
-        Processes a pixel for a rod by averaging over several iterations to simulate temporal integration.
+    """
+    Process an RGB pixel for a rod by integrating over multiple iterations.
 
-        Args:
-            brightness (float): Pixel brightness (photon equivalents).
-            wavelength (float): Dominant wavelength (nm).
+    Args:
+        R, G, B (int): RGB values (0-255).
+        wavelength (float): Dominant wavelength (nm).
 
-        Returns:
-            float: Averaged response magnitude.
-        """
+    Returns:
+        float: Averaged response (photoisomerizations per receptor per second).
+    """
+    def process_pixel(self, R, G, B, wavelength):
+        luminance = rgb_to_luminance(R, G, B)
         responses = []
         for _ in range(self.n_iterations):
-            # Introduce a small amount of noise to simulate stochastic photon absorption.
-            noisy_brightness = brightness * random.uniform(0.9, 1.1)
-            if noisy_brightness < self.threshold:
+            # Add a small noise component.
+            noisy_luminance = luminance * random.uniform(0.9, 1.1)
+            photoisom = luminance_to_photoisomerizations(noisy_luminance,
+                                                         conversion_factor=1.0)
+            if photoisom < self.threshold:
                 responses.append(0.0)
             else:
-                response = (noisy_brightness - self.threshold) * \
-                           spectral_sensitivity(wavelength, self.lambda_max)
-                responses.append(response)
+                spectral_weight = spectral_sensitivity(wavelength, self.lambda_max)
+                responses.append((photoisom - self.threshold) * spectral_weight)
         return sum(responses) / self.n_iterations
 
     def __repr__(self):
-        return (f"Rod [λ_max={self.lambda_max}nm, threshold={self.threshold}, "
-                f"iterations={self.n_iterations}]")
+        return f"Rod [λ_max={self.lambda_max}nm, threshold={self.threshold}, iterations={self.n_iterations}]"
 
 
 class Cell:
