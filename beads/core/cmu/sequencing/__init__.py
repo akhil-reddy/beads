@@ -64,7 +64,9 @@ def rgb_to_luminance(R, G, B, L_max=300, gamma=2.2):
     Assumes that (255,255,255) corresponds to L_max cd/m².
 
     Args:
-        R, G, B (int): RGB values (0-255).
+        R (int): RGB values (0-255).
+        G (int): RGB values (0-255).
+        B (int): RGB values (0-255).
         L_max (float): Maximum luminance (cd/m²) for white.
         gamma (float): Display gamma.
 
