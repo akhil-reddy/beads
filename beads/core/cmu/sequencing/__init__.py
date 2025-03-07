@@ -127,11 +127,11 @@ class Cone:
         self.subtype = (subtype if subtype in ['S', 'M', 'L']
                         else random.choices(['S', 'M', 'L'], weights=[0.1, 0.45, 0.45])[0])
         if self.subtype == 'S':
-            self.lambda_max = 420  # nm
+            self.lambda_max = 445  # nm
         elif self.subtype == 'M':
-            self.lambda_max = 530  # nm
+            self.lambda_max = 535  # nm
         elif self.subtype == 'L':
-            self.lambda_max = 560  # nm
+            self.lambda_max = 565  # nm
 
     """
     Process an RGB pixel given a dominant wavelength (nm) of the stimulus.
@@ -156,6 +156,24 @@ class Cone:
         # Weight by spectral sensitivity using the Govardovskii nomogram.
         spectral_weight = spectral_sensitivity(wavelength, self.lambda_max)
         return (photoisom - self.threshold) * spectral_weight
+
+    """
+    The signals from the cones are then combined by retinal interneurons (bipolar, horizontal, and amacrine cells),
+    to produce opponent channels for Push implementation
+
+    Args:
+        L, M, S (int): The wavelength equivalents of RGB
+
+    Returns:
+        float: Red-Green, Blue-Yellow and Luminance channels
+    """
+    @staticmethod
+    def get_opponent_channels(L, M, S):
+        # Calculate opponent channels
+        RG = L - M
+        BY = S - 0.5 * (L + M)
+        Lum = L + M
+        return RG, BY, Lum
 
     def __repr__(self):
         return f"Cone({self.subtype}) [λ_max={self.lambda_max}nm, threshold={self.threshold}]"
@@ -182,7 +200,7 @@ class Rod:
 
     def __init__(self, threshold=1, n_iterations=10):
         self.threshold = threshold
-        self.lambda_max = 500  # nm typical for rods.
+        self.lambda_max = 498  # nm typical for rods.
         self.n_iterations = n_iterations
 
     """
