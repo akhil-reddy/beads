@@ -33,7 +33,7 @@ The Beads framework is licensed under GPL 3.0, as found in the LICENSE file.
 
 ## How to use?
 
-All components aren't integrated yet. Please use them individually until further notice. 
+All components aren't integrated yet. Please use them individually (until further notice). 
 
 ### Disclaimer
 

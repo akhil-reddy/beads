@@ -277,9 +277,9 @@ class Retina:
 
 
 # Ratios are consistent with human eye geometry
-def initialize_retina(surface_radius=1248.0, cone_threshold=208.0, hex_size=1.0):
+def initialize_photoreceptors(surface_radius=1248.0, cone_threshold=208.0, hex_size=1.0):
     """
-    Initializes a digital retina by distributing rods and cones on a circular (radial) manifold.
+    Initializes photoreceptor part of the retina by distributing rods and cones on a circular (radial) manifold.
 
     The fovea (central region) is defined as the area with radius = retina_radius * fovea_radius_ratio.
     In the fovea, every cell is a cone (100% probability), whereas in the periphery the probability
@@ -351,7 +351,7 @@ def initialize_retina(surface_radius=1248.0, cone_threshold=208.0, hex_size=1.0)
 
 
 if __name__ == "__main__":
-    retina = initialize_retina(surface_radius=1.0, cone_threshold=0.3, hex_size=0.1)
+    retina = initialize_photoreceptors(surface_radius=1.0, cone_threshold=0.3, hex_size=0.1)
     print(retina)
     for cell in retina.cells:
         print(cell)
