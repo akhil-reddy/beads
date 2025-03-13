@@ -50,6 +50,10 @@ class Horizontal:
         pass
 
 
+def initialize_horizontal_cells(retina):
+    pass
+
+
 """
 Bipolar cells further refine the laterally inhibited stimulus through ON-OFF push-pull mechanism. Furthermore,
 they prepare the graded stimulus for spike transmission by enhancing the stimulus at high details and inhibiting
@@ -60,3 +64,7 @@ stimulus when its at low detail. Neurotransmitters are highly active here.
 class Bipolar:
     def __init__(self):
         pass
+
+
+def initialize_bipolar_cells(retina):
+    pass

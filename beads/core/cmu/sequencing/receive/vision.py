@@ -7,6 +7,8 @@ import math
 import random
 import numpy as np
 
+from beads.core.cmu import Retina
+
 
 # -- Govardovskii nomogram functions ------------------------------------------
 def govardovskii_nomogram(wavelength, lambda_max):
@@ -256,28 +258,8 @@ class Cell:
         return f"{self.cell_type.capitalize()} ({self.shape}) at (x={self.x:.2f}, y={self.y:.2f})"
 
 
-class Retina:
-    """
-        Represents a digital retina based on a 2D hexagonal surface.
-
-        Attributes:
-            cells (list of Cell): All cells in the retina.
-            surface_radius (float): The radius of the circular area covered.
-            cone_threshold (float): Hexagons with centers closer than this will be subdivided.
-    """
-
-    def __init__(self, cells, surface_radius, cone_threshold):
-        self.cells = cells
-        self.surface_radius = surface_radius
-        self.cone_threshold = cone_threshold
-
-    def __repr__(self):
-        return (f"Retina with {len(self.cells)} cells "
-                f"(surface radius: {self.surface_radius}, cone threshold: {self.cone_threshold}).")
-
-
 # Ratios are consistent with human eye geometry
-def initialize_photoreceptors(surface_radius=1248.0, cone_threshold=208.0, hex_size=1.0):
+def initialize_photoreceptors(retina, surface_radius=1248.0, cone_threshold=208.0, hex_size=1.0):
     """
     Initializes photoreceptor part of the retina by distributing rods and cones on a circular (radial) manifold.
 
@@ -288,6 +270,7 @@ def initialize_photoreceptors(surface_radius=1248.0, cone_threshold=208.0, hex_s
     probability distribution.
 
     Parameters:
+        retina (object): the umbrella object holding the retina instance
         surface_radius (float): Radius of the circular area.
         cone_threshold (float): Distance threshold for subdivision.
         hex_size (float): The "radius" of each hexagon (distance from center to a vertex).
@@ -347,13 +330,5 @@ def initialize_photoreceptors(surface_radius=1248.0, cone_threshold=208.0, hex_s
                         cy = y + factor * offset_distance * u_y
                         cells.append(Cell(cx, cy, cell_type="rod", shape="parallelogram"))
 
-    return Retina(cells, surface_radius, cone_threshold)
-
-
-if __name__ == "__main__":
-    retina = initialize_photoreceptors(surface_radius=1.0, cone_threshold=0.3, hex_size=0.1)
-    print(retina)
-    for cell in retina.cells:
-        print(cell)
-
-    # Initialize the Cochlea
+    retina.init_photoreceptors(cells, surface_radius, cone_threshold)
+    return retina
