@@ -172,10 +172,10 @@ class Cone:
     @staticmethod
     def get_opponent_channels(L, M, S):
         # Calculate opponent channels
-        RG = L - M
-        BY = S - 0.5 * (L + M)
-        Lum = L + M
-        return RG, BY, Lum
+        rg = L - M
+        by = S - 0.5 * (L + M)
+        lum = L + M
+        return rg, by, lum
 
     def __repr__(self):
         return f"Cone({self.subtype}) [λ_max={self.lambda_max}nm, threshold={self.threshold}]"
