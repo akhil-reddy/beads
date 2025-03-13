@@ -24,7 +24,7 @@ class Horizontal:
     In a traditional ML sense, this operation is equivalent to channel preprocessing / convolution in a
     Convolutional Neural Network (CNN).
     
-    Consider this datastructure:
+    Consider this datastructure if needed:
     
     {
         area: NUMBER, provides flexibility on the shape of the drop without describing the exact
@@ -33,7 +33,6 @@ class Horizontal:
             This esoteric structure should be equivalent to the Turing implementation of a "drop".
         stimulus: DATA, contains the RGB transformed structure for stimulus.
     }
-    REQUIREMENT: The "quality" of this operation should match or exceed one of CNN.
     '''
 
     def link(self):
@@ -42,8 +41,6 @@ class Horizontal:
     '''
     In a traditional ML sense, this operation is equivalent to the convolutional operator
     in a CNN. However, the analogy is made purely for understanding purposes. 
-    
-    REQUIREMENT: The "quality" of this operation should match or exceed one of CNN.
     '''
 
     def inhibit(self):
@@ -63,6 +60,14 @@ stimulus when its at low detail. Neurotransmitters are highly active here.
 
 class Bipolar:
     def __init__(self):
+        pass
+
+    # Non-linear amplification
+    def amplify(self):
+        pass
+
+    # Non-linear inhibition
+    def inhibit(self):
         pass
 
 
