@@ -127,17 +127,92 @@ stimulus when its at low detail. Neurotransmitters are highly active here.
 
 
 class Bipolar:
-    def __init__(self):
-        pass
+    def __init__(self, cell_type='ON', amplification_factor=2.0, inhibition_factor=0.5, detail_threshold=0.2):
+        """
+        Initialize a Bipolar cell that refines the laterally inhibited stimulus.
 
-    # Non-linear amplification
-    def amplify(self):
-        pass
+        Args:
+            cell_type (str): 'ON' or 'OFF' type. ON cells are activated by increases in light intensity,
+                             while OFF cells respond to decreases.
+            amplification_factor (float): Factor used for non-linear amplification.
+            inhibition_factor (float): Factor used for non-linear inhibition.
+            detail_threshold (float): Threshold to differentiate high detail from low detail.
+        """
+        self.cell_type = cell_type
+        self.amplification_factor = amplification_factor
+        self.inhibition_factor = inhibition_factor
+        self.detail_threshold = detail_threshold
+        self.processed_stimulus = None  # Stores the refined stimulus for spike transmission
 
-    # Non-linear inhibition
-    def inhibit(self):
-        pass
+    def amplify(self, stimulus):
+        """
+        Applies non-linear amplification to the stimulus. Regions where the stimulus exceeds
+        the detail_threshold are boosted to enhance high detail.
+
+        Args:
+            stimulus (numpy.ndarray or float): The input stimulus (e.g., an RGB vector or luminance value).
+
+        Returns:
+            numpy.ndarray or float: Amplified stimulus.
+        """
+        stim = np.array(stimulus, dtype=float)
+        # For values above the threshold, boost using a power law.
+        amplified = np.where(stim > self.detail_threshold,
+                             np.power(stim, self.amplification_factor),
+                             stim)
+        return amplified
+
+    def inhibit(self, stimulus):
+        """
+        Applies non-linear inhibition to the stimulus. Regions where the stimulus is below the
+        detail_threshold are suppressed, simulating push-pull (ON-OFF) processing.
+
+        Args:
+            stimulus (numpy.ndarray or float): The input stimulus.
+
+        Returns:
+            numpy.ndarray or float: Inhibited stimulus.
+        """
+        stim = np.array(stimulus, dtype=float)
+        # For values below the threshold, reduce the stimulus.
+        inhibited = np.where(stim < self.detail_threshold,
+                             stim * self.inhibition_factor,
+                             stim)
+        return inhibited
 
 
-def initialize_bipolar_cells(retina):
-    pass
+def initialize_bipolar_cells(retina, bipolar_inhibition_radius=5.0):
+    """
+    Creates bipolar cells based on the horizontal layer's laterally inhibited stimulus.
+    In this simplified implementation, each horizontal cell is assigned a bipolar cell.
+    The bipolar cell further refines the stimulus through non-linear amplification and inhibition.
+
+    Args:
+        retina (object): The retina object that holds, among other layers, the horizontal_cells.
+        bipolar_inhibition_radius (float): Radius for potential integration (if combining multiple inputs).
+                                          (Not used in this simple per-cell assignment but provided for extension.)
+
+    Returns:
+        retina: The retina object updated with a bipolar cell layer.
+    """
+    bipolar_cells = []
+    # For each horizontal cell (each “drop”), create a corresponding bipolar cell.
+    for h_cell in retina.horizontal_cells:
+        # Retrieve the inhibited stimulus from the horizontal cell.
+        # (Assumes h_cell.inhibit() returns an RGB vector or luminance value.)
+        inhibited_stimulus = h_cell.inhibit()
+
+        # For demonstration, choose bipolar cell type based on average stimulus intensity.
+        # (This is an arbitrary criterion; in practice, ON and OFF cells are determined by circuit wiring.)
+        avg_intensity = np.mean(inhibited_stimulus)
+        cell_type = 'ON' if avg_intensity >= 0.5 else 'OFF'
+
+        bipolar = Bipolar(cell_type=cell_type)
+        # Sequentially process the stimulus: first amplify, then apply inhibition.
+        amplified = bipolar.amplify(inhibited_stimulus)
+        processed = bipolar.inhibit(amplified)
+        bipolar.processed_stimulus = processed
+        bipolar_cells.append(bipolar)
+
+    retina.bipolar_cells = bipolar_cells
+    return retina
