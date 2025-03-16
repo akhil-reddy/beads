@@ -146,6 +146,7 @@ class Cone:
     Returns:
         float: Response magnitude (photoisomerizations per receptor per second).
     """
+
     def process_pixel(self, R, G, B, wavelength):
 
         # Convert RGB to luminance (using default calibration assumptions)
@@ -168,6 +169,7 @@ class Cone:
     Returns:
         float: Red-Green, Blue-Yellow and Luminance channels
     """
+
     @staticmethod
     def get_opponent_channels(L, M, S):
         # Calculate opponent channels
@@ -214,6 +216,7 @@ class Rod:
     Returns:
         float: Averaged response (photoisomerizations per receptor per second).
     """
+
     def process_pixel(self, R, G, B, wavelength):
         luminance = rgb_to_luminance(R, G, B)
         responses = []
@@ -255,6 +258,26 @@ class Cell:
 
     def __repr__(self):
         return f"{self.cell_type.capitalize()} ({self.shape}) at (x={self.x:.2f}, y={self.y:.2f})"
+
+
+def create_cones(x, y, hex_size):
+    vertices = []
+    cells = []
+    for k in range(6):
+        angle = math.pi / 3 * k
+        vx = x + hex_size * math.cos(angle)
+        vy = y + hex_size * math.sin(angle)
+        vertices.append((vx, vy))
+    # Create 6 triangular cells by taking the center and each pair of adjacent vertices.
+    for k in range(6):
+        v1 = vertices[k]
+        v2 = vertices[(k + 1) % 6]
+        # Compute the centroid of the triangle (for illustrative positioning).
+        cx = (x + v1[0] + v2[0]) / 3.0
+        cy = (y + v1[1] + v2[1]) / 3.0
+        cells.append(Cell(cx, cy, cell_type="cone", shape="triangle"))
+
+    return cells
 
 
 # Ratios are consistent with human eye geometry
@@ -299,35 +322,42 @@ def initialize_photoreceptors(retina, surface_radius=1248.0, cone_threshold=208.
             if math.sqrt(x * x + y * y) <= surface_radius:
                 distance = math.sqrt(x * x + y * y)
                 if distance < cone_threshold:
-                    # Subdivide the hexagon into 6 triangles.
-                    # First, compute the 6 vertices of the hexagon.
-                    vertices = []
-                    for k in range(6):
-                        angle = math.pi / 3 * k
-                        vx = x + hex_size * math.cos(angle)
-                        vy = y + hex_size * math.sin(angle)
-                        vertices.append((vx, vy))
-                    # Create 6 triangular cells by taking the center and each pair of adjacent vertices.
-                    for k in range(6):
-                        v1 = vertices[k]
-                        v2 = vertices[(k + 1) % 6]
-                        # Compute the centroid of the triangle (for illustrative positioning).
-                        cx = (x + v1[0] + v2[0]) / 3.0
-                        cy = (y + v1[1] + v2[1]) / 3.0
-                        cells.append(Cell(cx, cy, cell_type="cone", shape="triangle"))
+                    cells.append(create_cones(x, y, hex_size))
                 else:
-                    # Outside the fovea: divide the hexagon into 3 equal parallelograms.
-                    # For a pointy-topped hexagon of "radius" hex_size,
-                    # the distance between parallel sides is hex_size * sqrt(3).
-                    # One-third of that distance is: hex_size / sqrt(3).
-                    # We choose the subdivision direction along 30° (unit vector u = (cos30, sin30)).
-                    u_x = math.cos(math.radians(30))  # √3/2
-                    u_y = math.sin(math.radians(30))  # 1/2
-                    offset_distance = hex_size / math.sqrt(3)
+                    # Compute a quadratic probability for rods that peaks at the midpoint.
+                    # The peak is at r_peak, which is the midpoint between cone_threshold and surface_radius.
+                    r_peak = (cone_threshold + surface_radius) / 2.0
+                    # Quadratic function: probability is 0 at distance = cone_threshold and distance =
+                    # surface_radius, and equals 1 at distance = r_peak. Choose exponents: a higher exponent for the
+                    # inner side (steeper) and a lower one for the outer side (more gradual).
+                    inner_exponent = 2.0  # steeper rise from fovea edge to r_peak
+                    outer_exponent = 0.3  # more gradual fall-off from r_peak to the retina edge
+                    if distance <= r_peak:
+                        # Inner side: steep increase.
+                        rod_probability = ((distance - cone_threshold) / (r_peak - cone_threshold)) ** inner_exponent
+                    else:
+                        # Outer side: more gradual decrease.
+                        rod_probability = ((surface_radius - distance) / (surface_radius - r_peak)) ** outer_exponent
+                    # Clamp to ensure the probability is between 0 and 1.
+                    rod_probability = max(0, min(rod_probability, 1))
+
                     for factor in [-1, 0, 1]:
-                        cx = x + factor * offset_distance * u_x
-                        cy = y + factor * offset_distance * u_y
-                        cells.append(Cell(cx, cy, cell_type="rod", shape="parallelogram"))
+                        # Only create a rod if a random check passes, with probability based on distance.
+                        if random.random() < rod_probability:
+                            # Outside the fovea: divide the hexagon into 3 equal parallelograms.
+                            # For a pointy-topped hexagon of "radius" hex_size, the distance between parallel sides is
+                            # hex_size * sqrt(3). One-third of that distance is: hex_size / sqrt(3).
+                            # We choose the subdivision direction along 30° (unit vector u = (cos30, sin30)).
+                            u_x = math.cos(math.radians(30))  # √3/2
+                            u_y = math.sin(math.radians(30))  # 1/2
+                            offset_distance = hex_size / math.sqrt(3)
+
+                            cx = x + factor * offset_distance * u_x
+                            cy = y + factor * offset_distance * u_y
+                            cells.append(Cell(cx, cy, cell_type="rod", shape="parallelogram"))
+                        # Create cones near to the fovea as well
+                        elif distance < r_peak:
+                            cells.append(create_cones(x, y, hex_size))
 
     retina.init_photoreceptors(cells, surface_radius, cone_threshold)
     return retina
