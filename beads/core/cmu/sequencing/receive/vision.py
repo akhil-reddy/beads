@@ -160,8 +160,7 @@ class Cone:
         return (photoisom - self.threshold) * spectral_weight
 
     """
-    The signals from the cones are then combined by retinal interneurons (bipolar, horizontal, and amacrine cells),
-    to produce opponent channels for Push implementation
+    The signals from the cones are then combined to produce opponent channels for Push implementation
 
     Args:
         L, M, S (int): The wavelength equivalents of RGB
