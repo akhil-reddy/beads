@@ -205,6 +205,7 @@ class Rod:
         self.threshold = threshold
         self.lambda_max = 498  # nm typical for rods.
         self.n_iterations = n_iterations
+        self.responses = []
 
     """
     Process an RGB pixel for a rod by integrating over multiple iterations.
@@ -219,18 +220,18 @@ class Rod:
 
     def process_pixel(self, R, G, B, wavelength):
         luminance = rgb_to_luminance(R, G, B)
-        responses = []
-        for _ in range(self.n_iterations):
-            # Add a small noise component.
-            noisy_luminance = luminance * random.uniform(0.9, 1.1)
-            photoisom = luminance_to_photoisomerizations(noisy_luminance,
-                                                         conversion_factor=1.0)
-            if photoisom < self.threshold:
-                responses.append(0.0)
-            else:
-                spectral_weight = spectral_sensitivity(wavelength, self.lambda_max)
-                responses.append((photoisom - self.threshold) * spectral_weight)
-        return sum(responses) / self.n_iterations
+        photoisom = luminance_to_photoisomerizations(luminance,
+                                                     conversion_factor=1.0)
+        if len(self.responses) >= self.n_iterations:
+            self.responses.pop()
+
+        if photoisom < self.threshold:
+            self.responses.append(0.0)
+        else:
+            spectral_weight = spectral_sensitivity(wavelength, self.lambda_max)
+            self.responses.append((photoisom - self.threshold) * spectral_weight)
+
+        return sum(self.responses) / self.n_iterations
 
     def __repr__(self):
         return f"Rod [λ_max={self.lambda_max}nm, threshold={self.threshold}, iterations={self.n_iterations}]"
@@ -339,7 +340,7 @@ def initialize_photoreceptors(retina, surface_radius=1248.0, cone_threshold=208.
                         # Outer side: more gradual decrease.
                         rod_probability = ((surface_radius - distance) / (surface_radius - r_peak)) ** outer_exponent
                     # Clamp to ensure the probability is between 0 and 1.
-                    rod_probability = max(0, min(rod_probability, 1))
+                    rod_probability = max(0.0, min(rod_probability, 1.0))
 
                     for factor in [-1, 0, 1]:
                         # Only create a rod if a random check passes, with probability based on distance.
