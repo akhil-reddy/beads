@@ -10,6 +10,8 @@ class Retina:
 
         self.horizontal_cells = None
         self.bipolar_cells = None
+        self.amacrine_cells = None
+        self.ganglion_cells = None
 
     def init_photoreceptors(self, cells, surface_radius, cone_threshold):
         self.photoreceptor_cells = cells
@@ -21,3 +23,9 @@ class Retina:
 
     def init_bipolar_cells(self, cells):
         self.bipolar_cells = cells
+
+    def init_amacrine_cells(self, cells):
+        self.amacrine_cells = cells
+
+    def init_ganglion_cells(self, cells):
+        self.ganglion_cells = cells
