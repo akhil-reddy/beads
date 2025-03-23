@@ -153,7 +153,7 @@ def initialize_horizontal_cells(retina, inhibition_radius=10.0):
         h_cell.link(horizontal_cells, radius=inhibition_radius)
 
     # Attach the horizontal cell layer to the retina.
-    retina.horizontal_cells = horizontal_cells
+    retina.init_horizontal_cells(horizontal_cells)
     return retina
 
 
@@ -252,5 +252,5 @@ def initialize_bipolar_cells(retina, bipolar_inhibition_radius=5.0):
         bipolar.processed_stimulus = processed
         bipolar_cells.append(bipolar)
 
-    retina.bipolar_cells = bipolar_cells
+    retina.init_bipolar_cells(bipolar_cells)
     return retina
