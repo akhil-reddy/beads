@@ -282,7 +282,7 @@ def create_cones(x, y, hex_size):
 
 
 # Ratios are consistent with human eye geometry
-def initialize_photoreceptors(retina, surface_radius=1248.0, cone_threshold=208.0, hex_size=1.0):
+def initialize_photoreceptors(retina, surface_radius=1248.0, cone_threshold=208.0, hex_size=1.0):  # radius in microns
     """
     Initializes photoreceptor part of the retina by distributing rods and cones on a circular (radial) manifold.
 

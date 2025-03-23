@@ -24,6 +24,7 @@ class Horizontal:
         self.x = x
         self.y = y
         self.stimulus = stimulus  # Expected to be a numpy array [R, G, B]
+        self.field_stimulus = 0.0
         self.area = area
         self.pointers = []  # List of neighbouring Horizontal cells
 
@@ -56,35 +57,73 @@ class Horizontal:
                 if distance <= radius:
                     self.pointers.append(cell)
 
+    def center_calculate(self, k_n=1.0, lambda_n=175.0):  # lambda in microns
+        """
+        Calculate center stimulus from receptor field.
+
+        Args:
+            k_n (float): Amplitude for the narrow (center) component.
+            lambda_n (float): Decay constant for the narrow component.
+
+        Returns:
+            numpy.ndarray: The receptor stimulus (ensured non-negative).
+        """
+        if not self.pointers:
+            self.field_stimulus = self.stimulus
+
+        # The receptor field includes the photoreceptor directly under the horizontal cell
+        narrow_weighted_sum = self.stimulus * k_n
+        narrow_total_weight = k_n
+
+        # Compute the weight for each neighbor and accumulate weighted stimuli
+        for cell in self.pointers:
+            d = math.hypot(self.x - cell.x, self.y - cell.y)
+
+            narrow_weight = k_n * math.exp(-d / lambda_n)
+            narrow_weighted_sum += cell.stimulus * narrow_weight
+            narrow_total_weight += narrow_weight
+
+        narrow_weighted_avg = narrow_weighted_sum / narrow_total_weight
+        self.field_stimulus = narrow_weighted_avg
+
     '''
     In a traditional ML sense, this operation is equivalent to the convolutional operator
     in a CNN. However, the analogy is made purely for understanding purposes. 
     '''
 
-    def inhibit(self, inhibition_strength=0.1):
+    def surround_inhibit(self, inhibition_strength=0.1, k_w=0.5, lambda_w=700.0):  # lambda in microns
         """
-        Apply lateral inhibition by subtracting a fraction of the average neighbour stimulus.
-        This is analogous to a convolution operation in a CNN.
+        Apply lateral inhibition from gap junction horizontal cells.
 
         Args:
-            inhibition_strength (float): Factor determining the strength of lateral inhibition.
+            inhibition_strength (float): Neurotransmitter factor for the net neighbor influence.
+            k_w (float): Amplitude for the wide (surround) component.
+            lambda_w (float): Decay constant for the wide component.
 
         Returns:
-            numpy.ndarray: The new, inhibited stimulus.
+            numpy.ndarray: The new inhibited stimulus (ensured non-negative).
         """
         if not self.pointers:
-            return self.stimulus
+            return self.field_stimulus
 
-        # Compute the average stimulus from neighbours.
-        total = np.zeros_like(self.stimulus)
+        # The horizontal cells coupled with gap junctions
+        wide_weighted_sum = np.zeros_like(self.stimulus, dtype=float)
+        wide_total_weight = 0.0
+
+        # Compute the weight for each neighbor and accumulate weighted stimuli
         for cell in self.pointers:
-            total += cell.stimulus
-        avg_neighbour_stimulus = total / len(self.pointers)
+            d = math.hypot(self.x - cell.x, self.y - cell.y)
 
-        # Subtract a fraction of the average neighbour stimulus.
-        inhibited_stimulus = self.stimulus - inhibition_strength * avg_neighbour_stimulus
+            wide_weight = k_w * math.exp(-d / lambda_w)
+            wide_weighted_sum += cell.stimulus * wide_weight
+            wide_total_weight += wide_weight
 
-        # Ensure the inhibited stimulus does not fall below zero.
+        wide_weighted_avg = wide_weighted_sum / wide_total_weight
+
+        # Subtract a fraction of the weighted average from the current stimulus to apply inhibition.
+        inhibited_stimulus = self.field_stimulus - inhibition_strength * wide_weighted_avg
+
+        # Ensure the resulting stimulus remains non-negative.
         inhibited_stimulus = np.maximum(inhibited_stimulus, 0)
         return inhibited_stimulus
 
@@ -103,9 +142,8 @@ def initialize_horizontal_cells(retina, inhibition_radius=10.0):
         retina: The retina object updated with horizontal cells.
     """
     horizontal_cells = []
-    # Assume retina.cells is the list of photoreceptors.
-    for cell in retina.cells:
-        # In a full simulation, cell would already have a stimulus attribute.
+    for cell in retina.photoreceptor_cells:
+        # In a full run, cell would already have a stimulus attribute.
         # Here we initialize with a default (e.g., zero stimulus for [R,G,B]).
         default_stimulus = np.array([0.0, 0.0, 0.0])
         horizontal_cells.append(Horizontal(cell.x, cell.y, default_stimulus))
