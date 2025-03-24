@@ -12,7 +12,7 @@ def sigmoid(x, slope):
 
 class GenericAmacrine:
     def __init__(self, tau=0.05, V_rest=-65.0, V_threshold=-50.0,
-                 gain=1.5, g_max=1.0, sigmoid_slope=0.3):
+                 gain=1.2, g_max=1.0, sigmoid_slope=0.3):
         """
         Generic amacrine cell model simulating lateral and temporal modulation.
 
@@ -61,7 +61,7 @@ class GenericAmacrine:
 class StarburstAmacrine(GenericAmacrine):
     def __init__(self, preferred_direction, directional_sigma,
                  tau=0.05, V_rest=-65.0, V_threshold=-50.0,
-                 gain=1.5, g_max=1.0, sigmoid_slope=0.3):
+                 gain=1.2, g_max=1.0, sigmoid_slope=0.3):
         """
         Starburst amacrine cell model incorporating directional asymmetry.
 
@@ -189,50 +189,53 @@ class AIIAmacrine:
         self.V_history = []
 
 
-###############################################################################
-# Example: Initializing Amacrine Layers
-###############################################################################
-
-def initialize_amacrine_cells(retina, model_type='generic', **params):
+def initialize_aii_amacrine_cells(retina, **params):
     """
     Create an amacrine cell layer associated with each bipolar cell in the retina.
 
     Args:
         retina (object): Should contain a list retina.bipolar_cells.
-        model_type (str): 'generic', 'starburst', or 'aii'.
         params: Parameters for the chosen amacrine cell model.
 
     Returns:
-        retina: The retina object with retina.amacrine_cells set.
+        retina: The retina object with retina.aii_amacrine_cells set.
+    """
+    amacrine_cells = []
+    for bipolar in retina.rod_bipolar_cells:
+        cell = AIIAmacrine(**params)
+        cell.update(bipolar.processed_stimulus, dt=0.01)
+        amacrine_cells.append(cell)
+
+    retina.aii_amacrine_cells = amacrine_cells
+    return retina
+
+
+def initialize_starburst_amacrine_cells(retina, **params):
+    """
+    Create an amacrine cell layer associated with each bipolar cell in the retina.
+
+    Args:
+        retina (object): Should contain a list retina.bipolar_cells.
+        params: Parameters for the chosen amacrine cell model.
+
+    Returns:
+        retina: The retina object with retina.aii_amacrine_cells set.
     """
     amacrine_cells = []
     # For simplicity, assume that each bipolar cell gives rise to one amacrine cell.
     # In the starburst case, we need spatial info. Here we assume each bipolar cell has attributes
     # processed_stimulus and position.
-    for bipolar in retina.bipolar_cells:
-        if model_type.lower() == 'generic':
-            cell = GenericAmacrine(**params)
-            # Update with the bipolar cell's processed stimulus (scalar)
-            cell.update(bipolar.processed_stimulus, dt=0.01)
-        elif model_type.lower() == 'starburst':
-            # For starburst cells, we require additional spatial info.
-            if not hasattr(bipolar, 'position'):
-                raise ValueError("Bipolar cell must have a 'position' attribute for starburst model.")
-            # Example: set preferred_direction to 0 radians and directional_sigma to 0.5 rad.
-            cell = StarburstAmacrine(preferred_direction=0.0, directional_sigma=0.5, **params)
-            # Here, assume bipolar.processed_stimulus is a list of inputs from surrounding bipolar cells,
-            # and bipolar.positions is a list of corresponding positions.
-            # For demonstration, we use the bipolar cell's own position and signal.
-            cell.update_directional([bipolar.processed_stimulus],
-                                    [bipolar.position],
-                                    bipolar.position,
-                                    dt=0.01)
-        elif model_type.lower() == 'aii':
-            cell = AIIAmacrine(**params)
-            cell.update(bipolar.processed_stimulus, dt=0.01)
-        else:
-            raise ValueError("model_type must be 'generic', 'starburst', or 'aii'")
+    for bipolar in retina.cone_bipolar_cells:
+        # For starburst cells, we require additional spatial info.
+        if not hasattr(bipolar, 'position'):
+            raise ValueError("Bipolar cell must have a 'position' attribute for starburst model.")
+        # TODO: Set the direction and sigma based on excitations from cone_bipolar cells.
+        cell = StarburstAmacrine(preferred_direction=0.0, directional_sigma=0.5, **params)
+        cell.update_directional([bipolar.processed_stimulus],
+                                [bipolar.position],
+                                bipolar.position,
+                                dt=0.01)
         amacrine_cells.append(cell)
 
-    retina.amacrine_cells = amacrine_cells
+    retina.starburst_amacrine_cells = amacrine_cells
     return retina

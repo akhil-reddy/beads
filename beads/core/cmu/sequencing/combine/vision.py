@@ -143,10 +143,11 @@ def initialize_horizontal_cells(retina, inhibition_radius=10.0):
     """
     horizontal_cells = []
     for cell in retina.photoreceptor_cells:
-        # In a full run, cell would already have a stimulus attribute.
-        # Here we initialize with a default (e.g., zero stimulus for [R,G,B]).
-        default_stimulus = np.array([0.0, 0.0, 0.0])
-        horizontal_cells.append(Horizontal(cell.x, cell.y, default_stimulus))
+        if cell.cell_type == "cone":
+            # In a full run, cell would already have a stimulus attribute.
+            # Here we initialize with a default (e.g., zero stimulus for [R,G,B]).
+            default_stimulus = np.array([0.0, 0.0, 0.0])
+            horizontal_cells.append(Horizontal(cell.x, cell.y, default_stimulus))
 
     # Link each horizontal cell to its neighbours based on the inhibition_radius.
     for h_cell in horizontal_cells:
@@ -232,24 +233,42 @@ class Bipolar:
         return self.V
 
 
-def initialize_bipolar_layer(retina):
+def initialize_rod_bipolar_cells(retina):
+    """
+    Given a retina object that contains a list of rod photoreceptor cells, create an ON bipolar cell layer.
+
+    Args:
+        retina: An object that has an attribute `photoreceptor_cells`, a list of photoreceptor cell objects.
+
+    Returns:
+        retina: The retina object updated with rod bipolar cells stored in `retina.rod_bipolar_cells`.
+    """
+    bipolar_cells = []
+
+    for cell in retina.photoreceptor_cells:
+        if cell.cell_type == "rod":
+            # Create an ON bipolar cell with typical parameter values
+            bipolar = Bipolar(cell.x, cell.y, cell_type='ON', threshold=0.5, tau=0.07, gain=3.0, saturation=1.0)
+            bipolar_cells.append(bipolar)
+
+    retina.rod_bipolar_cells = bipolar_cells
+    return retina
+
+
+def initialize_cone_bipolar_cells(retina):
     """
     Given a retina object that contains a list of horizontal cells with already computed inhibitory responses,
-    create a bipolar cell layer. In a biologically consistent model, each bipolar cell is connected to a local group
-    of horizontal cells, and the bipolar cell type (ON vs. OFF) is determined by the wiring in the retina.
-    Here we use a simplified scheme where the average signal of the local horizontal cell 'drop' is used to decide the
-    type.
+    create a bipolar cell layer.
 
     Args:
         retina: An object that has an attribute `horizontal_cells`, a list of horizontal cell objects,
                 each with a computed attribute `inhibited_stimulus` (range normalized to [0, 1]).
 
     Returns:
-        retina: The retina object updated with a bipolar cell layer stored in `retina.bipolar_cells`.
+        retina: The retina object updated with cone bipolar cells stored in `retina.cone_bipolar_cells`.
     """
     bipolar_cells = []
 
-    # For this example, we assume each horizontal cell gives rise to one bipolar cell.
     for h_cell in retina.horizontal_cells:
         # Create an ON bipolar cell with typical parameter values
         bipolar = Bipolar(h_cell.x, h_cell.y, cell_type='ON', threshold=0.5, tau=0.07, gain=3.0, saturation=1.0)
@@ -259,5 +278,5 @@ def initialize_bipolar_layer(retina):
         bipolar = Bipolar(h_cell.x, h_cell.y, cell_type='OFF', threshold=0.5, tau=0.07, gain=3.0, saturation=1.0)
         bipolar_cells.append(bipolar)
 
-    retina.bipolar_cells = bipolar_cells
+    retina.cone_bipolar_cells = bipolar_cells
     return retina
