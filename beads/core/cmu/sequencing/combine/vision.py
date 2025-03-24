@@ -165,92 +165,99 @@ stimulus when its at low detail. Neurotransmitters are highly active here.
 
 
 class Bipolar:
-    def __init__(self, cell_type='ON', amplification_factor=2.0, inhibition_factor=0.5, detail_threshold=0.2):
+    def __init__(self, x, y, cell_type='ON', threshold=0.5, gain=2.0, tau=0.1, saturation=1.0):
         """
-        Initialize a Bipolar cell that refines the laterally inhibited stimulus.
+        Initialize a bipolar cell that processes graded input over time.
 
         Args:
-            cell_type (str): 'ON' or 'OFF' type. ON cells are activated by increases in light intensity,
-                             while OFF cells respond to decreases.
-            amplification_factor (float): Factor used for non-linear amplification.
-            inhibition_factor (float): Factor used for non-linear inhibition.
-            detail_threshold (float): Threshold to differentiate high detail from low detail.
+            cell_type (str): 'ON' or 'OFF'. ON bipolar cells depolarize in response to a reduction
+                             of glutamate (i.e. when the photoreceptor input decreases), whereas OFF bipolar cells
+                             depolarize when the glutamate input increases.
+            threshold (float): The baseline threshold level.
+            gain (float): The amplification factor for signals exceeding the threshold.
+            tau (float): Time constant (in seconds) for the membrane's leaky integration, reflecting temporal filtering.
+            saturation (float): Maximum possible output (models the limited dynamic range).
         """
-        self.cell_type = cell_type
-        self.amplification_factor = amplification_factor
-        self.inhibition_factor = inhibition_factor
-        self.detail_threshold = detail_threshold
-        self.processed_stimulus = None  # Stores the refined stimulus for spike transmission
+        self.cell_type = cell_type.upper()
+        self.x = x
+        self.y = y
+        self.threshold = threshold
+        self.gain = gain
+        self.tau = tau  # Time constant (s) for integration
+        self.saturation = saturation
+        self.V = 0.0  # Membrane potential (or output) at the current time
+        self.output_history = []  # To store the temporal evolution of responses
 
-    def amplify(self, stimulus):
+    def update(self, input_signal, dt):
         """
-        Applies non-linear amplification to the stimulus. Regions where the stimulus exceeds
-        the detail_threshold are boosted to enhance high detail.
+        Update the bipolar cell's membrane potential given a graded input signal.
+        This function simulates a leaky integrator (RC circuit) to reflect the temporal dynamics of bipolar cells.
 
         Args:
-            stimulus (numpy.ndarray or float): The input stimulus (e.g., an RGB vector or luminance value).
+            input_signal (float or np.ndarray): The instantaneous graded input (normalized, e.g. 0 to 1) f
+            rom photoreceptor/horizontal cell processing.
+            dt (float): The time step (in seconds) for numerical integration.
 
         Returns:
-            numpy.ndarray or float: Amplified stimulus.
+            float: The updated (non-linear) output of the cell.
         """
-        stim = np.array(stimulus, dtype=float)
-        # For values above the threshold, boost using a power law.
-        amplified = np.where(stim > self.detail_threshold,
-                             np.power(stim, self.amplification_factor),
-                             stim)
-        return amplified
+        # For ON bipolar cells, the reduction in photoreceptor glutamate (i.e., a lower input)
+        # produces excitation. For OFF bipolar cells, an increase in input is excitatory.
+        if self.cell_type == 'ON':
+            # Compute the drive as the difference between threshold and input
+            drive = self.threshold - input_signal
+        elif self.cell_type == 'OFF':
+            drive = input_signal - self.threshold
+        else:
+            raise ValueError("cell_type must be either 'ON' or 'OFF'.")
 
-    def inhibit(self, stimulus):
-        """
-        Applies non-linear inhibition to the stimulus. Regions where the stimulus is below the
-        detail_threshold are suppressed, simulating push-pull (ON-OFF) processing.
+        # Only positive differences (excitatory drive) contribute:
+        drive = max(drive, 0)
+        # Non-linear amplification:
+        drive *= self.gain
 
-        Args:
-            stimulus (numpy.ndarray or float): The input stimulus.
+        # Update the membrane potential using a leaky integrator:
+        # dV/dt = (-V + drive) / tau
+        dV = (-self.V + drive) * (dt / self.tau)
+        self.V += dV
 
-        Returns:
-            numpy.ndarray or float: Inhibited stimulus.
-        """
-        stim = np.array(stimulus, dtype=float)
-        # For values below the threshold, reduce the stimulus.
-        inhibited = np.where(stim < self.detail_threshold,
-                             stim * self.inhibition_factor,
-                             stim)
-        return inhibited
+        # Enforce saturation limits:
+        self.V = np.clip(self.V, 0, self.saturation)
+
+        self.output_history.append(self.V)
+        return self.V
+
+    def get_output(self):
+        """Return the current output (membrane potential) of the bipolar cell."""
+        return self.V
 
 
-def initialize_bipolar_cells(retina, bipolar_inhibition_radius=5.0):
+def initialize_bipolar_layer(retina):
     """
-    Creates bipolar cells based on the horizontal layer's laterally inhibited stimulus.
-    In this simplified implementation, each horizontal cell is assigned a bipolar cell.
-    The bipolar cell further refines the stimulus through non-linear amplification and inhibition.
+    Given a retina object that contains a list of horizontal cells with already computed inhibitory responses,
+    create a bipolar cell layer. In a biologically consistent model, each bipolar cell is connected to a local group
+    of horizontal cells, and the bipolar cell type (ON vs. OFF) is determined by the wiring in the retina.
+    Here we use a simplified scheme where the average signal of the local horizontal cell 'drop' is used to decide the
+    type.
 
     Args:
-        retina (object): The retina object that holds, among other layers, the horizontal_cells.
-        bipolar_inhibition_radius (float): Radius for potential integration (if combining multiple inputs).
-                                          (Not used in this simple per-cell assignment but provided for extension.)
+        retina: An object that has an attribute `horizontal_cells`, a list of horizontal cell objects,
+                each with a computed attribute `inhibited_stimulus` (range normalized to [0, 1]).
 
     Returns:
-        retina: The retina object updated with a bipolar cell layer.
+        retina: The retina object updated with a bipolar cell layer stored in `retina.bipolar_cells`.
     """
     bipolar_cells = []
-    # For each horizontal cell (each “drop”), create a corresponding bipolar cell.
+
+    # For this example, we assume each horizontal cell gives rise to one bipolar cell.
     for h_cell in retina.horizontal_cells:
-        # Retrieve the inhibited stimulus from the horizontal cell.
-        # (Assumes h_cell.inhibit() returns an RGB vector or luminance value.)
-        inhibited_stimulus = h_cell.inhibit()
-
-        # For demonstration, choose bipolar cell type based on average stimulus intensity.
-        # (This is an arbitrary criterion; in practice, ON and OFF cells are determined by circuit wiring.)
-        avg_intensity = np.mean(inhibited_stimulus)
-        cell_type = 'ON' if avg_intensity >= 0.5 else 'OFF'
-
-        bipolar = Bipolar(cell_type=cell_type)
-        # Sequentially process the stimulus: first amplify, then apply inhibition.
-        amplified = bipolar.amplify(inhibited_stimulus)
-        processed = bipolar.inhibit(amplified)
-        bipolar.processed_stimulus = processed
+        # Create an ON bipolar cell with typical parameter values
+        bipolar = Bipolar(h_cell.x, h_cell.y, cell_type='ON', threshold=0.5, tau=0.07, gain=3.0, saturation=1.0)
         bipolar_cells.append(bipolar)
 
-    retina.init_bipolar_cells(bipolar_cells)
+        # Create an OFF bipolar cell with typical parameter values
+        bipolar = Bipolar(h_cell.x, h_cell.y, cell_type='OFF', threshold=0.5, tau=0.07, gain=3.0, saturation=1.0)
+        bipolar_cells.append(bipolar)
+
+    retina.bipolar_cells = bipolar_cells
     return retina
