@@ -10,7 +10,7 @@ def sigmoid(x, slope):
 # Generic (Non-directional) Amacrine Cell Model
 ###############################################################################
 
-class GenericAmacrineCell:
+class GenericAmacrine:
     def __init__(self, tau=0.05, V_rest=-65.0, V_threshold=-50.0,
                  gain=1.5, g_max=1.0, sigmoid_slope=0.3):
         """
@@ -58,7 +58,7 @@ class GenericAmacrineCell:
 # Starburst Amacrine Cell Model (Directional)
 ###############################################################################
 
-class StarburstAmacrineCell(GenericAmacrineCell):
+class StarburstAmacrine(GenericAmacrine):
     def __init__(self, preferred_direction, directional_sigma,
                  tau=0.05, V_rest=-65.0, V_threshold=-50.0,
                  gain=1.5, g_max=1.0, sigmoid_slope=0.3):
@@ -131,7 +131,7 @@ class StarburstAmacrineCell(GenericAmacrineCell):
 # AII Amacrine Cell Model (Rod Pathway)
 ###############################################################################
 
-class AIIAmacrineCell:
+class AIIAmacrine:
     def __init__(self, tau=0.04, V_rest=-65.0, V_threshold=-52.0,
                  gain=1.2, g_gap_max=1.0, g_inhib_max=0.8, sigmoid_slope=0.4):
         """
@@ -193,7 +193,7 @@ class AIIAmacrineCell:
 # Example: Initializing Amacrine Layers
 ###############################################################################
 
-def initialize_amacrine_layer(retina, model_type='generic', **params):
+def initialize_amacrine_cells(retina, model_type='generic', **params):
     """
     Create an amacrine cell layer associated with each bipolar cell in the retina.
 
@@ -211,7 +211,7 @@ def initialize_amacrine_layer(retina, model_type='generic', **params):
     # processed_stimulus and position.
     for bipolar in retina.bipolar_cells:
         if model_type.lower() == 'generic':
-            cell = GenericAmacrineCell(**params)
+            cell = GenericAmacrine(**params)
             # Update with the bipolar cell's processed stimulus (scalar)
             cell.update(bipolar.processed_stimulus, dt=0.01)
         elif model_type.lower() == 'starburst':
@@ -219,7 +219,7 @@ def initialize_amacrine_layer(retina, model_type='generic', **params):
             if not hasattr(bipolar, 'position'):
                 raise ValueError("Bipolar cell must have a 'position' attribute for starburst model.")
             # Example: set preferred_direction to 0 radians and directional_sigma to 0.5 rad.
-            cell = StarburstAmacrineCell(preferred_direction=0.0, directional_sigma=0.5, **params)
+            cell = StarburstAmacrine(preferred_direction=0.0, directional_sigma=0.5, **params)
             # Here, assume bipolar.processed_stimulus is a list of inputs from surrounding bipolar cells,
             # and bipolar.positions is a list of corresponding positions.
             # For demonstration, we use the bipolar cell's own position and signal.
@@ -228,7 +228,7 @@ def initialize_amacrine_layer(retina, model_type='generic', **params):
                                     bipolar.position,
                                     dt=0.01)
         elif model_type.lower() == 'aii':
-            cell = AIIAmacrineCell(**params)
+            cell = AIIAmacrine(**params)
             cell.update(bipolar.processed_stimulus, dt=0.01)
         else:
             raise ValueError("model_type must be 'generic', 'starburst', or 'aii'")
