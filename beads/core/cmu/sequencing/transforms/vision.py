@@ -194,7 +194,7 @@ def initialize_aii_amacrine_cells(retina, **params):
     Create an amacrine cell layer associated with each bipolar cell in the retina.
 
     Args:
-        retina (object): Should contain a list retina.bipolar_cells.
+        retina (object): Should contain a list retina.rod_bipolar_cells.
         params: Parameters for the chosen amacrine cell model.
 
     Returns:
@@ -215,7 +215,7 @@ def initialize_starburst_amacrine_cells(retina, **params):
     Create an amacrine cell layer associated with each bipolar cell in the retina.
 
     Args:
-        retina (object): Should contain a list retina.bipolar_cells.
+        retina (object): Should contain a list retina.cone_bipolar_cells.
         params: Parameters for the chosen amacrine cell model.
 
     Returns:
