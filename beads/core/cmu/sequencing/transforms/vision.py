@@ -55,79 +55,6 @@ class GenericAmacrine:
 
 
 ###############################################################################
-# Starburst Amacrine Cell Model (Directional)
-###############################################################################
-
-class StarburstAmacrine(GenericAmacrine):
-    def __init__(self, preferred_direction, directional_sigma,
-                 tau=0.05, V_rest=-65.0, V_threshold=-50.0,
-                 gain=1.2, g_max=1.0, sigmoid_slope=0.3):
-        """
-        Starburst amacrine cell model incorporating directional asymmetry.
-
-        In addition to the standard dynamics, this cell weights bipolar inputs based on their spatial
-        positions relative to a preferred direction (in radians). This models the asymmetry in the dendritic
-        arbor of starburst amacrine cells which underlies directional selectivity.
-
-        Parameters:
-            preferred_direction (float): Preferred direction (radians) of input integration.
-            directional_sigma (float): Standard deviation (radians) of the directional weighting function.
-            (Other parameters are as in GenericAmacrineCell.)
-        """
-        super().__init__(tau=tau, V_rest=V_rest, V_threshold=V_threshold,
-                         gain=gain, g_max=g_max, sigmoid_slope=sigmoid_slope)
-        self.preferred_direction = preferred_direction  # in radians
-        self.directional_sigma = directional_sigma
-
-    def directional_weight(self, bipolar_position, cell_position):
-        """
-        Compute a directional weight based on the angle between the vector from the amacrine cell
-        to the bipolar cell and the cell's preferred direction.
-
-        Args:
-            bipolar_position (tuple): (x, y) position of the bipolar input.
-            cell_position (tuple): (x, y) position of the amacrine cell.
-
-        Returns:
-            float: Weight between 0 and 1, with 1 for inputs aligned with the preferred direction.
-        """
-        # Compute the vector from the cell to the bipolar input.
-        dx = bipolar_position[0] - cell_position[0]
-        dy = bipolar_position[1] - cell_position[1]
-        # Compute the angle of this vector.
-        angle = np.arctan2(dy, dx)
-        # Compute the angular difference from the preferred direction.
-        d_angle = np.angle(np.exp(1j * (angle - self.preferred_direction)))
-        # Use a Gaussian function of the angular difference.
-        weight = np.exp(-0.5 * (d_angle / self.directional_sigma) ** 2)
-        return weight
-
-    def update_directional(self, bipolar_inputs, bipolar_positions, cell_position, dt):
-        """
-        Update the membrane potential by integrating bipolar inputs with directional weighting.
-
-        Parameters:
-            bipolar_inputs (list of float): Graded inputs from bipolar cells (normalized 0–1).
-            bipolar_positions (list of tuple): Positions (x,y) for each bipolar input.
-            cell_position (tuple): Position (x,y) of this amacrine cell.
-            dt (float): Time step (s).
-
-        Returns:
-            float: Inhibitory output computed as before.
-        """
-        # Compute weights for each bipolar input based on their position.
-        weights = [self.directional_weight(pos, cell_position) for pos in bipolar_positions]
-        # Compute the effective input as the weighted average.
-        if np.sum(weights) > 0:
-            effective_input = np.dot(bipolar_inputs, weights) / np.sum(weights)
-        else:
-            effective_input = 0.0
-
-        # Update membrane potential with the effective (weighted) input.
-        return self.update(effective_input, dt)
-
-
-###############################################################################
 # AII Amacrine Cell Model (Rod Pathway)
 ###############################################################################
 
@@ -210,6 +137,86 @@ def initialize_aii_amacrine_cells(retina, **params):
     return retina
 
 
+###############################################################################
+# Starburst Amacrine Cell Model (Directional)
+###############################################################################
+
+"""
+This needs an overhaul. Starburst class should have focus area and dendrites in all directions.
+Direction is calculated from leaky spatial centrifugal integrator.
+If many directions align, DSGC should increase the rate of firing appropriately.
+"""
+
+
+class StarburstAmacrine(GenericAmacrine):
+    def __init__(self, preferred_direction, directional_sigma,
+                 tau=0.05, V_rest=-65.0, V_threshold=-50.0,
+                 gain=1.2, g_max=1.0, sigmoid_slope=0.3):
+        """
+        Starburst amacrine cell model incorporating directional asymmetry.
+
+        In addition to the standard dynamics, this cell weights bipolar inputs based on their spatial
+        positions relative to a preferred direction (in radians). This models the asymmetry in the dendritic
+        arbor of starburst amacrine cells which underlies directional selectivity.
+
+        Parameters:
+            preferred_direction (float): Preferred direction (radians) of input integration.
+            directional_sigma (float): Standard deviation (radians) of the directional weighting function.
+            (Other parameters are as in GenericAmacrineCell.)
+        """
+        super().__init__(tau=tau, V_rest=V_rest, V_threshold=V_threshold,
+                         gain=gain, g_max=g_max, sigmoid_slope=sigmoid_slope)
+        self.preferred_direction = preferred_direction  # in radians
+        self.directional_sigma = directional_sigma
+
+    def directional_weight(self, bipolar_position, cell_position):
+        """
+        Compute a directional weight based on the angle between the vector from the amacrine cell
+        to the bipolar cell and the cell's preferred direction.
+
+        Args:
+            bipolar_position (tuple): (x, y) position of the bipolar input.
+            cell_position (tuple): (x, y) position of the amacrine cell.
+
+        Returns:
+            float: Weight between 0 and 1, with 1 for inputs aligned with the preferred direction.
+        """
+        # Compute the vector from the cell to the bipolar input.
+        dx = bipolar_position[0] - cell_position[0]
+        dy = bipolar_position[1] - cell_position[1]
+        # Compute the angle of this vector.
+        angle = np.arctan2(dy, dx)
+        # Compute the angular difference from the preferred direction.
+        d_angle = np.angle(np.exp(1j * (angle - self.preferred_direction)))
+        # Use a Gaussian function of the angular difference.
+        weight = np.exp(-0.5 * (d_angle / self.directional_sigma) ** 2)
+        return weight
+
+    def update_directional(self, bipolar_inputs, bipolar_positions, cell_position, dt):
+        """
+        Update the membrane potential by integrating bipolar inputs with directional weighting.
+
+        Parameters:
+            bipolar_inputs (list of float): Graded inputs from bipolar cells (normalized 0–1).
+            bipolar_positions (list of tuple): Positions (x,y) for each bipolar input.
+            cell_position (tuple): Position (x,y) of this amacrine cell.
+            dt (float): Time step (s).
+
+        Returns:
+            float: Inhibitory output computed as before.
+        """
+        # Compute weights for each bipolar input based on their position.
+        weights = [self.directional_weight(pos, cell_position) for pos in bipolar_positions]
+        # Compute the effective input as the weighted average.
+        if np.sum(weights) > 0:
+            effective_input = np.dot(bipolar_inputs, weights) / np.sum(weights)
+        else:
+            effective_input = 0.0
+
+        # Update membrane potential with the effective (weighted) input.
+        return self.update(effective_input, dt)
+
+
 def initialize_starburst_amacrine_cells(retina, **params):
     """
     Create an amacrine cell layer associated with each bipolar cell in the retina.
@@ -229,7 +236,7 @@ def initialize_starburst_amacrine_cells(retina, **params):
         # For starburst cells, we require additional spatial info.
         if not hasattr(bipolar, 'position'):
             raise ValueError("Bipolar cell must have a 'position' attribute for starburst model.")
-        # TODO: Set the direction and sigma based on excitations from cone_bipolar cells.
+        # TODO: Overhaul
         cell = StarburstAmacrine(preferred_direction=0.0, directional_sigma=0.5, **params)
         cell.update_directional([bipolar.processed_stimulus],
                                 [bipolar.position],

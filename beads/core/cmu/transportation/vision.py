@@ -1,10 +1,10 @@
 import numpy as np
 
 
-class Ganglion:
+class DSGanglion:
     def __init__(self, threshold=0.5, integration_factor=1.0):
         """
-        Initialize a Ganglion cell.
+        Initialize a Direction Selective Ganglion cell.
 
         Args:
             threshold (float): Minimum integrated signal required to trigger a spike.
@@ -64,7 +64,7 @@ def initialize_ganglion_cells(retina, threshold=0.5, integration_factor=1.0):
     """
     ganglion_cells = []
     for amacrine in retina.amacrine_cells:
-        ganglion = Ganglion(threshold=threshold, integration_factor=integration_factor)
+        ganglion = DSGanglion(threshold=threshold, integration_factor=integration_factor)
         integrated = ganglion.integrate(amacrine.processed_stimulus)
         ganglion.spike(integrated)
         ganglion_cells.append(ganglion)
