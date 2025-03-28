@@ -1,5 +1,11 @@
 import numpy as np
 
+"""
+Starburst class should have focus area and dendrites in all directions.
+Direction is calculated from leaky spatial centrifugal integrator.
+If many directions align, DSGC should increase the rate of firing appropriately.
+"""
+
 
 class DSGanglion:
     def __init__(self, threshold=0.5, integration_factor=1.0):
