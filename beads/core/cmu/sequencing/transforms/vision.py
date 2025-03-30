@@ -193,7 +193,7 @@ def cluster_bipolar_cells(bipolar_cells, distance_threshold=50.0, min_cluster_si
 ###############################################################################
 
 class StarburstAmacrine:
-    def __init__(self, bipolar_cells, lambda_r=50.0, nonlin_gain=10.0, nonlin_thresh=0.2, tau=0.05):
+    def __init__(self, bipolar_cells, lambda_r=50.0, nonlin_gain=10.0, nonlin_thresh=0.2, tau=0.05):  # lambda is in microns
         """
         Starburst amacrine cell model that integrates inputs from a radially defined focus area.
 
@@ -223,8 +223,6 @@ class StarburstAmacrine:
         # We'll create a 4D tensor with dimensions:
         # [1, number_of_bipolar_cells, 1, 2] where the last dimension represents (x, y) components.
         self.contribution_tensor = None
-        self.preferred_direction = None
-        self.centrifugal_output = 0.0
 
     def compute_directional_contributions(self):
         """
@@ -243,20 +241,25 @@ class StarburstAmacrine:
             bipolar_pos = np.array([b.x, b.y])
             r_vec = bipolar_pos - self.center
             r = np.linalg.norm(r_vec)
-            # If r is zero (unlikely), skip the cell.
             if r == 0:
-                contributions.append(np.array([0.0, 0.0]))
+                contributions.append(np.zeros(4))
                 continue
-            # Weight = bipolar signal * exponential decay with distance.
             weight = b.processed_stimulus * exponential_decay(r, self.lambda_r)
-            # Contribution vector = weight * (unit vector in direction of r_vec)
-            contribution = weight * (r_vec / r)
-            contributions.append(contribution)
+            unit_r_vec = r_vec / r
+            projections = np.array([
+                max(weight * unit_r_vec[0], 0),   # Positive x-direction
+                max(-weight * unit_r_vec[0], 0),  # Negative x-direction
+                max(weight * unit_r_vec[1], 0),   # Positive y-direction
+                max(-weight * unit_r_vec[1], 0)   # Negative y-direction
+            ])
+            contributions.append(projections)
 
-        # Convert to numpy array; shape will be (N, 2)
+        # Convert to numpy array; shape will be (N, 4)
         contributions = np.array(contributions)
-        # Expand dimensions to make a 4D array: (1, N, 1, 2)
-        self.contribution_tensor = contributions[np.newaxis, :, np.newaxis, :]
+        # Sum contributions along the first axis (i.e., sum over all bipolar cells)
+        summed_contributions = np.sum(contributions, axis=0)
+        # Reshape to match the desired 4D tensor shape: (1, 1, 1, 4)
+        self.contribution_tensor = summed_contributions.reshape(1, 4)
         return self.contribution_tensor
 
 
