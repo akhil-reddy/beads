@@ -137,112 +137,156 @@ def initialize_aii_amacrine_cells(retina, **params):
     return retina
 
 
-###############################################################################
-# Starburst Amacrine Cell Model (Directional)
-###############################################################################
-
-"""
-This needs an overhaul. Starburst class should have focus area and dendrites in all directions.
-Direction is calculated from leaky spatial centrifugal integrator.
-If many directions align, DSGC should increase the rate of firing appropriately.
-"""
+def exponential_decay(distance, lambda_r):
+    """Compute an exponential decay weight based on distance."""
+    return np.exp(-distance / lambda_r)
 
 
-class StarburstAmacrine(GenericAmacrine):
-    def __init__(self, preferred_direction, directional_sigma,
-                 tau=0.05, V_rest=-65.0, V_threshold=-50.0,
-                 gain=1.2, g_max=1.0, sigmoid_slope=0.3):
-        """
-        Starburst amacrine cell model incorporating directional asymmetry.
-
-        In addition to the standard dynamics, this cell weights bipolar inputs based on their spatial
-        positions relative to a preferred direction (in radians). This models the asymmetry in the dendritic
-        arbor of starburst amacrine cells which underlies directional selectivity.
-
-        Parameters:
-            preferred_direction (float): Preferred direction (radians) of input integration.
-            directional_sigma (float): Standard deviation (radians) of the directional weighting function.
-            (Other parameters are as in GenericAmacrineCell.)
-        """
-        super().__init__(tau=tau, V_rest=V_rest, V_threshold=V_threshold,
-                         gain=gain, g_max=g_max, sigmoid_slope=sigmoid_slope)
-        self.preferred_direction = preferred_direction  # in radians
-        self.directional_sigma = directional_sigma
-
-    def directional_weight(self, bipolar_position, cell_position):
-        """
-        Compute a directional weight based on the angle between the vector from the amacrine cell
-        to the bipolar cell and the cell's preferred direction.
-
-        Args:
-            bipolar_position (tuple): (x, y) position of the bipolar input.
-            cell_position (tuple): (x, y) position of the amacrine cell.
-
-        Returns:
-            float: Weight between 0 and 1, with 1 for inputs aligned with the preferred direction.
-        """
-        # Compute the vector from the cell to the bipolar input.
-        dx = bipolar_position[0] - cell_position[0]
-        dy = bipolar_position[1] - cell_position[1]
-        # Compute the angle of this vector.
-        angle = np.arctan2(dy, dx)
-        # Compute the angular difference from the preferred direction.
-        d_angle = np.angle(np.exp(1j * (angle - self.preferred_direction)))
-        # Use a Gaussian function of the angular difference.
-        weight = np.exp(-0.5 * (d_angle / self.directional_sigma) ** 2)
-        return weight
-
-    def update_directional(self, bipolar_inputs, bipolar_positions, cell_position, dt):
-        """
-        Update the membrane potential by integrating bipolar inputs with directional weighting.
-
-        Parameters:
-            bipolar_inputs (list of float): Graded inputs from bipolar cells (normalized 0–1).
-            bipolar_positions (list of tuple): Positions (x,y) for each bipolar input.
-            cell_position (tuple): Position (x,y) of this amacrine cell.
-            dt (float): Time step (s).
-
-        Returns:
-            float: Inhibitory output computed as before.
-        """
-        # Compute weights for each bipolar input based on their position.
-        weights = [self.directional_weight(pos, cell_position) for pos in bipolar_positions]
-        # Compute the effective input as the weighted average.
-        if np.sum(weights) > 0:
-            effective_input = np.dot(bipolar_inputs, weights) / np.sum(weights)
-        else:
-            effective_input = 0.0
-
-        # Update membrane potential with the effective (weighted) input.
-        return self.update(effective_input, dt)
+def unit_vector(angle):
+    """Return a 2D unit vector for a given angle (radians)."""
+    return np.array([np.cos(angle), np.sin(angle)])
 
 
-def initialize_starburst_amacrine_cells(retina, **params):
+def cluster_bipolar_cells(bipolar_cells, distance_threshold=50.0, min_cluster_size=0):  # distance is in microns
     """
-    Create an amacrine cell layer associated with each bipolar cell in the retina.
+    Group bipolar cells into clusters based on their (x, y) positions.
+
+    This simple greedy algorithm iterates through the list of bipolar cells and
+    assigns each cell to an existing cluster if its distance from the cluster's centroid
+    is below the threshold. Otherwise, it starts a new cluster.
 
     Args:
-        retina (object): Should contain a list retina.cone_bipolar_cells.
-        params: Parameters for the chosen amacrine cell model.
+        bipolar_cells (list): List of bipolar cell objects (each must have .x and .y attributes).
+        distance_threshold (float): Maximum distance (in same units as x,y) for grouping.
+        min_cluster_size (int): Minimum number of cells for a cluster to be used.
 
     Returns:
-        retina: The retina object with retina.aii_amacrine_cells set.
+        list: A list of clusters, where each cluster is a list of bipolar cells.
     """
-    amacrine_cells = []
-    # For simplicity, assume that each bipolar cell gives rise to one amacrine cell.
-    # In the starburst case, we need spatial info. Here we assume each bipolar cell has attributes
-    # processed_stimulus and position.
-    for bipolar in retina.cone_bipolar_cells:
-        # For starburst cells, we require additional spatial info.
-        if not hasattr(bipolar, 'position'):
-            raise ValueError("Bipolar cell must have a 'position' attribute for starburst model.")
-        # TODO: Overhaul
-        cell = StarburstAmacrine(preferred_direction=0.0, directional_sigma=0.5, **params)
-        cell.update_directional([bipolar.processed_stimulus],
-                                [bipolar.position],
-                                bipolar.position,
-                                dt=0.01)
-        amacrine_cells.append(cell)
+    clusters = []
 
-    retina.starburst_amacrine_cells = amacrine_cells
+    for cell in bipolar_cells:
+        if cell.cell_type == 'OFF':  # Avoid OFF cells for directional weighting
+            continue
+        cell_pos = np.array([cell.x, cell.y])
+        added = False
+        # Try to add the cell to an existing cluster.
+        for cluster in clusters:
+            # Compute cluster centroid.
+            positions = np.array([[b.x, b.y] for b in cluster])
+            centroid = np.mean(positions, axis=0)
+            distance = np.linalg.norm(cell_pos - centroid)
+            if distance <= distance_threshold:
+                cluster.append(cell)
+                added = True
+                break
+        if not added:
+            clusters.append([cell])
+
+    # Optionally, discard clusters smaller than min_cluster_size.
+    valid_clusters = [cluster for cluster in clusters if len(cluster) >= min_cluster_size]
+    return valid_clusters
+
+
+###############################################################################
+# Starburst Amacrine Cell Model (Directional, with radial grouping)
+###############################################################################
+
+class StarburstAmacrine:
+    def __init__(self, bipolar_cells, lambda_r=50.0, nonlin_gain=10.0, nonlin_thresh=0.2, tau=0.05):
+        """
+        Starburst amacrine cell model that integrates inputs from a radially defined focus area.
+
+        Bipolar cells are assumed to be distributed around the SAC's soma.
+        Their contributions (weighted by both their output and an exponential decay based on distance)
+        are stored separately in a 4D tensor for later processing.
+
+        Args:
+            bipolar_cells (list): List of bipolar cell objects, each with:
+                                  - processed_stimulus (scalar, 0–1)
+                                  - x, y (position in micrometers)
+            lambda_r (float): Spatial decay constant (micrometers).
+            nonlin_gain (float): Gain for the nonlinear transformation.
+            nonlin_thresh (float): Threshold for the nonlinearity.
+            tau (float): Time constant for any leaky integration (s); here used for future extension.
+        """
+        self.bipolar_cells = bipolar_cells
+        # Compute focus area as the centroid of the bipolar cell positions.
+        positions = np.array([[b.x, b.y] for b in bipolar_cells])
+        self.center = np.mean(positions, axis=0)
+        self.lambda_r = lambda_r
+        self.nonlin_gain = nonlin_gain
+        self.nonlin_thresh = nonlin_thresh
+        self.tau = tau
+
+        # Instead of a single net vector, we store each bipolar cell's contribution.
+        # We'll create a 4D tensor with dimensions:
+        # [1, number_of_bipolar_cells, 1, 2] where the last dimension represents (x, y) components.
+        self.contribution_tensor = None
+        self.preferred_direction = None
+        self.centrifugal_output = 0.0
+
+    def compute_directional_contributions(self):
+        """
+        Compute the individual weighted contribution vectors from each bipolar cell.
+
+        For each bipolar cell:
+          - Compute the relative vector from the SAC center.
+          - Weight the bipolar output by an exponential decay based on distance.
+          - Compute the contribution vector (weighted unit vector).
+
+        Returns:
+            numpy.ndarray: A 4D tensor of shape (1, N, 1, 2), where N is the number of bipolar cells.
+        """
+        contributions = []
+        for b in self.bipolar_cells:
+            bipolar_pos = np.array([b.x, b.y])
+            r_vec = bipolar_pos - self.center
+            r = np.linalg.norm(r_vec)
+            # If r is zero (unlikely), skip the cell.
+            if r == 0:
+                contributions.append(np.array([0.0, 0.0]))
+                continue
+            # Weight = bipolar signal * exponential decay with distance.
+            weight = b.processed_stimulus * exponential_decay(r, self.lambda_r)
+            # Contribution vector = weight * (unit vector in direction of r_vec)
+            contribution = weight * (r_vec / r)
+            contributions.append(contribution)
+
+        # Convert to numpy array; shape will be (N, 2)
+        contributions = np.array(contributions)
+        # Expand dimensions to make a 4D array: (1, N, 1, 2)
+        self.contribution_tensor = contributions[np.newaxis, :, np.newaxis, :]
+        return self.contribution_tensor
+
+
+###############################################################################
+# Initialization Function for Starburst Amacrine Layer (with Radial Grouping)
+###############################################################################
+
+def initialize_starburst_amacrine_cells(retina, distance_threshold=50.0, min_cluster_size=8,
+                                        lambda_r=50.0, nonlin_gain=10.0, nonlin_thresh=0.2, tau=0.05):
+    """
+    Group cone bipolar cells based on their (x,y) coordinates into clusters (focus areas).
+    Create a starburst amacrine cell for each cluster.
+
+    Args:
+        retina (object): Retina object with retina.cone_bipolar_cells (each with attributes: x, y, processed_stimulus).
+        distance_threshold (float): Maximum distance for bipolar cells to be grouped into the same SAC.
+        min_cluster_size (int): Minimum number of bipolar cells required for a group.
+        lambda_r: Parameters for the SAC model.
+        nonlin_gain: Parameters for the SAC model.
+        nonlin_thresh: Parameters for the SAC model.
+        tau: Parameters for the SAC model.
+
+    Returns:
+        retina: Updated retina object with retina.starburst_amacrine_cells.
+    """
+    clusters = cluster_bipolar_cells(retina.cone_bipolar_cells, distance_threshold, min_cluster_size)
+    starburst_cells = []
+    for cluster in clusters:
+        sac = StarburstAmacrine(cluster, lambda_r=lambda_r, nonlin_gain=nonlin_gain,
+                                nonlin_thresh=nonlin_thresh, tau=tau)
+        starburst_cells.append(sac)
+    retina.starburst_amacrine_cells = starburst_cells
     return retina

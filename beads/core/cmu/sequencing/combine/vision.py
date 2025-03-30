@@ -43,7 +43,7 @@ class Horizontal:
     }
     '''
 
-    def link(self, horizontal_cells, radius=10.0):
+    def link(self, horizontal_cells, radius=10.0):  # radius is in microns
         """
         Link this horizontal cell to neighbours within a given radius.
 
