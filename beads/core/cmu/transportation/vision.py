@@ -4,6 +4,8 @@ import numpy as np
 4 types of Ganglion Cells:
 1. Midget Cells - Small receptive fields that support high-acuity vision and color opponency (red–green)
 2. Parasol Cells - High sensitivity to motion and contrast, with rapid responses
+3. Small Bistratified Cells - These cells are involved in blue–yellow color processing
+4. Direction-Selective Ganglion Cells (DSGCs) - Specifically tuned to respond to motion in one direction
 """
 
 
