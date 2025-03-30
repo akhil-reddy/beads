@@ -223,18 +223,16 @@ class StarburstAmacrine:
         # We'll create a 4D tensor with dimensions:
         # [1, number_of_bipolar_cells, 1, 2] where the last dimension represents (x, y) components.
         self.contribution_tensor = None
+        self.preferred_direction = None  # (radians) from the net 2D vector
+        self.centrifugal_output = 0.0
 
     def compute_directional_contributions(self):
         """
-        Compute the individual weighted contribution vectors from each bipolar cell.
-
-        For each bipolar cell:
-          - Compute the relative vector from the SAC center.
-          - Weight the bipolar output by an exponential decay based on distance.
-          - Compute the contribution vector (weighted unit vector).
+        Compute contributions from each bipolar cell by projecting its weighted input onto the 4 cardinal axes.
+        The four values correspond to: [pos_x, neg_x, pos_y, neg_y].
 
         Returns:
-            numpy.ndarray: A 4D tensor of shape (1, N, 1, 2), where N is the number of bipolar cells.
+            numpy.ndarray: A 1x4 vector with the summed contributions.
         """
         contributions = []
         for b in self.bipolar_cells:
@@ -244,23 +242,72 @@ class StarburstAmacrine:
             if r == 0:
                 contributions.append(np.zeros(4))
                 continue
+            # Weight is bipolar output times an exponential decay based on distance.
             weight = b.processed_stimulus * exponential_decay(r, self.lambda_r)
             unit_r_vec = r_vec / r
-            projections = np.array([
-                max(weight * unit_r_vec[0], 0),   # Positive x-direction
-                max(-weight * unit_r_vec[0], 0),  # Negative x-direction
-                max(weight * unit_r_vec[1], 0),   # Positive y-direction
-                max(-weight * unit_r_vec[1], 0)   # Negative y-direction
+            # Project onto 4 cardinal directions.
+            proj = np.array([
+                max(weight * unit_r_vec[0], 0),   # Positive x
+                max(-weight * unit_r_vec[0], 0),  # Negative x
+                max(weight * unit_r_vec[1], 0),   # Positive y
+                max(-weight * unit_r_vec[1], 0)   # Negative y
             ])
-            contributions.append(projections)
-
-        # Convert to numpy array; shape will be (N, 4)
-        contributions = np.array(contributions)
-        # Sum contributions along the first axis (i.e., sum over all bipolar cells)
-        summed_contributions = np.sum(contributions, axis=0)
-        # Reshape to match the desired 4D tensor shape: (1, 1, 1, 4)
+            contributions.append(proj)
+        # Sum over all bipolar cells to get a single 1x4 vector.
+        summed_contributions = np.sum(np.array(contributions), axis=0)
         self.contribution_tensor = summed_contributions.reshape(1, 4)
         return self.contribution_tensor
+
+    def get_2d_vector(self):
+        """
+        Convert the 1x4 contribution tensor into a 2D vector.
+        The x-component is (pos_x - neg_x) and the y-component is (pos_y - neg_y).
+
+        Returns:
+            numpy.ndarray: A 1x2 vector representing the net directional contribution.
+        """
+        if self.contribution_tensor is None:
+            self.compute_directional_contributions()
+        proj = self.contribution_tensor.flatten()  # shape (4,)
+        x_comp = proj[0] - proj[1]
+        y_comp = proj[2] - proj[3]
+        net_vector = np.array([x_comp, y_comp])
+        mag = np.linalg.norm(net_vector)
+        if mag > 1e-3:
+            self.preferred_direction = np.arctan2(y_comp, x_comp)
+        else:
+            self.preferred_direction = None
+        return net_vector
+
+    def compute_centrifugal_output(self):
+        """
+        Compute a nonlinear (sigmoidal) transformation of the net 2D vector's magnitude
+        to represent the SAC's directional (centrifugal) output.
+
+        Returns:
+            float: Centrifugal output (0–1).
+        """
+        net_vector = self.get_2d_vector()
+        mag = np.linalg.norm(net_vector)
+        self.centrifugal_output = 1.0 / (1.0 + np.exp(-self.nonlin_gain * (mag - self.nonlin_thresh)))
+        return self.centrifugal_output
+
+    def update(self, dt=0.01):
+        """
+        Update the SAC's state. Here we compute the contributions, derive the 2D vector,
+        and then calculate the centrifugal output.
+
+        Args:
+            dt (float): Time step (for future temporal integration, currently unused).
+
+        Returns:
+            tuple: (preferred_direction, centrifugal_output, 2D vector)
+        """
+        self.compute_directional_contributions()
+        net_vector = self.get_2d_vector()
+        pref_dir = self.preferred_direction
+        centrif = self.compute_centrifugal_output()
+        return pref_dir, centrif, net_vector
 
 
 ###############################################################################
