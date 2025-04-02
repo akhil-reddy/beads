@@ -149,7 +149,7 @@ def initialize_DSGCs(retina, sac_group_size=5, lambda_ds=100.0, integration_fact
     Returns:
         retina: Updated retina object with retina.ganglion_cells set.
     """
-    # Cluster SACs (simple grouping by order).
+    # TODO: Cluster SACs based on centers
     sac_clusters = []
     current_cluster = []
     for sac in retina.starburst_amacrine_cells:
@@ -169,3 +169,201 @@ def initialize_DSGCs(retina, sac_group_size=5, lambda_ds=100.0, integration_fact
 
     retina.ganglion_cells = dsgc_list
     return retina
+
+
+def exponential_decay(distance, lambda_val):
+    """Exponential decay weight based on distance (in micrometers)."""
+    return np.exp(-distance / lambda_val)
+
+
+def unit_vector(angle):
+    """Return a 2D unit vector for a given angle (radians)."""
+    return np.array([np.cos(angle), np.sin(angle)])
+
+
+###############################################################################
+# Midget Ganglion Cell (Parvocellular Pathway)
+###############################################################################
+class MidgetGanglion:
+    def __init__(self, bipolar_cells, lambda_m=30.0, integration_factor=1.0, threshold=0.3):  # lambda_m is in microns
+        """
+        Midget ganglion cell model supporting high-acuity vision and red–green color opponency.
+
+        Args:
+            bipolar_cells (list): List of midget bipolar cell objects. Each bipolar is assumed to have:
+                                  - processed_stimulus (scalar or vector for color opponency)
+                                  - x, y (position in micrometers)
+            lambda_m (float): Spatial decay constant, reflecting the small receptive field (~30 µm).
+            integration_factor (float): Scaling factor.
+            threshold (float): Threshold for spike generation.
+        """
+        self.bipolar_cells = bipolar_cells
+        positions = np.array([[b.x, b.y] for b in bipolar_cells])
+        self.center = np.mean(positions, axis=0)
+        self.lambda_m = lambda_m
+        self.integration_factor = integration_factor
+        self.threshold = threshold
+
+        self.integrated_signal = 0.0
+        self.spikes = []
+
+    def integrate(self):
+        """Integrate input from midget bipolar cells with spatial weighting."""
+        total = 0.0
+        for b in self.bipolar_cells:
+            pos = np.array([b.x, b.y])
+            distance = np.linalg.norm(pos - self.center)
+            weight = exponential_decay(distance, self.lambda_m)
+            total += weight * b.processed_stimulus
+        self.integrated_signal = self.integration_factor * total
+        return self.integrated_signal
+
+    def spike(self):
+        """Generate a spike if integrated signal exceeds threshold."""
+        out = 1 if self.integrated_signal > self.threshold else 0
+        self.spikes.append(out)
+        return out
+
+
+###############################################################################
+# Parasol Ganglion Cell (Magnocellular Pathway)
+###############################################################################
+class ParasolGanglion:
+    def __init__(self, bipolar_cells, lambda_p=80.0, integration_factor=1.0, threshold=0.4):  # lambda_p is in microns
+        """
+        Parasol ganglion cell model sensitive to motion and contrast.
+
+        Args:
+            bipolar_cells (list): List of diffuse bipolar cell objects (providing large receptive field input).
+            lambda_p (float): Spatial decay constant (larger receptive field, e.g., ~80 µm).
+            integration_factor (float): Scaling factor.
+            threshold (float): Firing threshold.
+        """
+        self.bipolar_cells = bipolar_cells
+        positions = np.array([[b.x, b.y] for b in bipolar_cells])
+        self.center = np.mean(positions, axis=0)
+        self.lambda_p = lambda_p
+        self.integration_factor = integration_factor
+        self.threshold = threshold
+
+        self.integrated_signal = 0.0
+        self.spikes = []
+
+    def integrate(self):
+        """Integrate input from diffuse bipolar cells with spatial weighting."""
+        total = 0.0
+        for b in self.bipolar_cells:
+            pos = np.array([b.x, b.y])
+            distance = np.linalg.norm(pos - self.center)
+            weight = exponential_decay(distance, self.lambda_p)
+            total += weight * b.processed_stimulus
+        self.integrated_signal = self.integration_factor * total
+        return self.integrated_signal
+
+    def spike(self):
+        """Generate a spike if integrated signal exceeds threshold."""
+        out = 1 if self.integrated_signal > self.threshold else 0
+        self.spikes.append(out)
+        return out
+
+
+###############################################################################
+# Small Bistratified Ganglion Cell (Koniocellular Pathway)
+###############################################################################
+class SmallBistratifiedGanglion:
+    def __init__(self, bipolar_cells, lambda_sb=60.0, integration_factor=1.0, threshold=0.4):  # lambda_sb is in microns
+        """
+        Small bistratified ganglion cell model involved in blue–yellow color opponency.
+
+        Args:
+            bipolar_cells (list): List of diffuse bipolar cell objects (providing large receptive field input).
+            lambda_sb (float): Spatial decay constant for integration (e.g., ~60 µm).
+            integration_factor (float): Scaling factor.
+            threshold (float): Spike threshold.
+        """
+        self.bipolar_cells = bipolar_cells
+        positions = np.array([[b.x, b.y] for b in bipolar_cells])
+        self.center = np.mean(positions, axis=0)
+        self.lambda_sb = lambda_sb
+        self.integration_factor = integration_factor
+        self.threshold = threshold
+
+        self.integrated_signal = 0.0
+        self.spikes = []
+
+    def integrate(self):
+        """Integrate input from diffuse bipolar cells with spatial weighting."""
+        total = 0.0
+        for b in self.bipolar_cells:
+            pos = np.array([b.x, b.y])
+            distance = np.linalg.norm(pos - self.center)
+            weight = exponential_decay(distance, self.lambda_sb)
+            total += weight * b.processed_stimulus
+        self.integrated_signal = self.integration_factor * total
+        return self.integrated_signal
+
+    def spike(self):
+        """Generate a spike if integrated signal exceeds threshold."""
+        out = 1 if self.integrated_signal > self.threshold else 0
+        self.spikes.append(out)
+        return out
+
+
+###############################################################################
+# Example Initialization Functions for Each Ganglion Cell Type
+###############################################################################
+
+def initialize_midget_cells(retina, group_size=8, lambda_m=30.0, integration_factor=1.0, threshold=0.3):
+    """
+    Cluster midget bipolar cells into groups and create Midget Ganglion Cells.
+    """
+    # TODO group midget bipolar cells.
+    clusters = [retina.midget_bipolar_cells[i:i + group_size] for i in
+                range(0, len(retina.midget_bipolar_cells), group_size)]
+    midget_cells = []
+    for cluster in clusters:
+        if len(cluster) == 0:
+            continue
+        mg = MidgetGanglion(cluster, lambda_m=lambda_m, integration_factor=integration_factor, threshold=threshold)
+        mg.integrate()
+        midget_cells.append(mg)
+    retina.midget_ganglion_cells = midget_cells
+    return retina
+
+
+def initialize_parasol_cells(retina, group_size=8, lambda_p=80.0, integration_factor=1.0, threshold=0.4):
+    """
+    Cluster diffuse bipolar cells into groups and create Parasol Ganglion Cells.
+    """
+    # TODO group diffuse bipolar cells.
+    clusters = [retina.diffuse_bipolar_cells[i:i + group_size] for i in
+                range(0, len(retina.diffuse_bipolar_cells), group_size)]
+    parasol_cells = []
+    for cluster in clusters:
+        if len(cluster) == 0:
+            continue
+        pg = ParasolGanglion(cluster, lambda_p=lambda_p, integration_factor=integration_factor, threshold=threshold)
+        pg.integrate()
+        parasol_cells.append(pg)
+    retina.parasol_ganglion_cells = parasol_cells
+    return retina
+
+
+def initialize_small_bistratified_cells(retina, group_size=6, lambda_sb=60.0, integration_factor=1.0, threshold=0.3):
+    """
+    Cluster S-cone bipolar cells and diffuse bipolar cells into groups and create Small Bistratified Ganglion Cells.
+    """
+    # TODO group S bipolar cells
+    clusters = [retina.small_bistratified_bipolar_cells[i:i + group_size] for i in
+                range(0, len(retina.diffuse_bipolar_cells), group_size)]
+    small_bistratified_ganglion_cells = []
+    for cluster in clusters:
+        if len(cluster) == 0:
+            continue
+        sbg = SmallBistratifiedGanglion(cluster, lambda_sb=lambda_sb,
+                                        integration_factor=integration_factor, threshold=threshold)
+        sbg.integrate()
+        small_bistratified_ganglion_cells.append(sbg)
+    retina.small_bistratified_ganglion_cells = small_bistratified_ganglion_cells
+    return retina
+
