@@ -1,13 +1,4 @@
 """
-    A (256, 256, 256) number is converted into a varying length vector for stimulus.
-"""
-
-
-def get_stimulus_pixel(red, green, blue):
-    pass
-
-
-"""
     An RGB image (or a frame from a video) is processed into a varying length vector matrix
 """
 
