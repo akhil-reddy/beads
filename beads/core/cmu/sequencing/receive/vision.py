@@ -126,8 +126,7 @@ class Cone:
 
     def __init__(self, subtype=None, threshold=100):
         self.threshold = threshold
-        self.subtype = (subtype if subtype in ['S', 'M', 'L']
-                        else random.choices(['S', 'M', 'L'], weights=[0.1, 0.45, 0.45])[0])
+        self.subtype = subtype
         if self.subtype == 'S':
             self.lambda_max = 445  # nm
         elif self.subtype == 'M':
@@ -169,14 +168,6 @@ class Cone:
     Returns:
         float: Red-Green, Blue-Yellow and Luminance channels
     """
-
-    @staticmethod
-    def get_opponent_channels(L, M, S):
-        # Calculate opponent channels
-        rg = L - M
-        by = S - 0.5 * (L + M)
-        lum = L + M
-        return rg, by, lum
 
     def __repr__(self):
         return f"Cone({self.subtype}) [λ_max={self.lambda_max}nm, threshold={self.threshold}]"
@@ -253,6 +244,10 @@ class Cell:
         self.x = x
         self.y = y
         self.cell_type = cell_type  # "cone" or "rod"
+        if cell_type == 'rod':
+            self.cell = Rod(threshold=activation_threshold)
+        elif cell_type == 'cone':
+            self.cell = Cone(subtype=subtype, threshold=activation_threshold)
         self.shape = shape  # "triangle" or "hexagon"
         self.subtype = subtype
         self.activation_threshold = activation_threshold
@@ -270,13 +265,16 @@ def create_cones(x, y, hex_size):
         vy = y + hex_size * math.sin(angle)
         vertices.append((vx, vy))
     # Create 6 triangular cells by taking the center and each pair of adjacent vertices.
+    subtypes = ['S', 'M', 'L']
     for k in range(6):
         v1 = vertices[k]
         v2 = vertices[(k + 1) % 6]
         # Compute the centroid of the triangle (for illustrative positioning).
         cx = (x + v1[0] + v2[0]) / 3.0
         cy = (y + v1[1] + v2[1]) / 3.0
-        cells.append(Cell(cx, cy, cell_type="cone", shape="triangle"))
+        # Choose subtype in sequence S, M, L, S, M, L
+        subtype = subtypes[k % 3]
+        cells.append(Cell(cx, cy, cell_type="cone", shape="triangle", subtype=subtype))
 
     return cells
 

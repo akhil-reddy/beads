@@ -131,6 +131,40 @@ class DSGanglion:
         return spike_output
 
 
+def cluster_SACs_by_proximity(sac_list, sac_group_size=5):
+    """
+    Cluster SACs into groups of approximately 'sac_group_size' based on spatial proximity.
+
+    Args:
+        sac_list (list): List of SAC objects, each with a .center attribute (array-like [x, y]).
+        sac_group_size (int): Desired number of SACs per cluster.
+
+    Returns:
+        list of list: A list of clusters, each cluster is a list of SAC objects.
+    """
+    unassigned = sac_list.copy()
+    clusters = []
+
+    while unassigned:
+        # Start a new cluster with the first unassigned SAC
+        seed = unassigned.pop(0)
+        # Compute distances from seed to all other unassigned SACs
+        seed_center = np.array(seed.center)
+        dists = [np.linalg.norm(np.array(sac.center) - seed_center) for sac in unassigned]
+        # Sort the remaining SACs by distance
+        sorted_indices = np.argsort(dists)
+        # Take the nearest (sac_group_size - 1) neighbors
+        cluster = [seed]
+        for idx in sorted_indices[:sac_group_size - 1]:
+            cluster.append(unassigned[idx])
+        # Remove those neighbors from unassigned
+        for sac in cluster[1:]:
+            unassigned.remove(sac)
+        clusters.append(cluster)
+
+    return clusters
+
+
 ###############################################################################
 # DSGC Layer Initialization
 ###############################################################################
@@ -149,16 +183,7 @@ def initialize_DSGCs(retina, sac_group_size=5, lambda_ds=100.0, integration_fact
     Returns:
         retina: Updated retina object with retina.ganglion_cells set.
     """
-    # TODO: Cluster SACs based on centers
-    sac_clusters = []
-    current_cluster = []
-    for sac in retina.starburst_amacrine_cells:
-        current_cluster.append(sac)
-        if len(current_cluster) >= sac_group_size:
-            sac_clusters.append(current_cluster)
-            current_cluster = []
-    if current_cluster:
-        sac_clusters.append(current_cluster)
+    sac_clusters = cluster_SACs_by_proximity(retina.starburst_amacrine_cells, sac_group_size)
 
     dsgc_list = []
     for cluster in sac_clusters:
@@ -309,6 +334,40 @@ class SmallBistratifiedGanglion:
         return out
 
 
+def cluster_bipolar_by_proximity(bipolar_cells, group_size=8):
+    """
+    Cluster bipolar cells into groups of up to 'group_size' based on spatial proximity.
+
+    Args:
+        bipolar_cells (list): List of bipolar cell objects, each with .x and .y attributes.
+        group_size (int): Desired maximum number of cells per cluster.
+
+    Returns:
+        List[List[bipolar_cell]]: A list of clusters.
+    """
+    unassigned = bipolar_cells.copy()
+    clusters = []
+
+    while unassigned:
+        # Take the first unassigned cell as seed
+        seed = unassigned.pop(0)
+        seed_pos = np.array([seed.x, seed.y])
+        # Compute distances to all other unassigned cells
+        dists = [np.linalg.norm(np.array([b.x, b.y]) - seed_pos) for b in unassigned]
+        # Sort indices by distance
+        sorted_idx = np.argsort(dists)
+        # Take the nearest (group_size - 1) neighbors
+        neighbors = [unassigned[i] for i in sorted_idx[:group_size - 1]]
+        # Form cluster
+        cluster = [seed] + neighbors
+        # Remove chosen neighbors from unassigned
+        for b in neighbors:
+            unassigned.remove(b)
+        clusters.append(cluster)
+
+    return clusters
+
+
 ###############################################################################
 # Example Initialization Functions for Each Ganglion Cell Type
 ###############################################################################
@@ -317,9 +376,8 @@ def initialize_midget_cells(retina, group_size=8, lambda_m=30.0, integration_fac
     """
     Cluster midget bipolar cells into groups and create Midget Ganglion Cells.
     """
-    # TODO group midget bipolar cells.
-    clusters = [retina.midget_bipolar_cells[i:i + group_size] for i in
-                range(0, len(retina.midget_bipolar_cells), group_size)]
+    # Group midget bipolar cells.
+    clusters = cluster_bipolar_by_proximity(retina.bipolar_cells, group_size)
     midget_cells = []
     for cluster in clusters:
         if len(cluster) == 0:
@@ -335,9 +393,8 @@ def initialize_parasol_cells(retina, group_size=8, lambda_p=80.0, integration_fa
     """
     Cluster diffuse bipolar cells into groups and create Parasol Ganglion Cells.
     """
-    # TODO group diffuse bipolar cells.
-    clusters = [retina.diffuse_bipolar_cells[i:i + group_size] for i in
-                range(0, len(retina.diffuse_bipolar_cells), group_size)]
+    # Group diffuse bipolar cells.
+    clusters = cluster_bipolar_by_proximity(retina.bipolar_cells, group_size)
     parasol_cells = []
     for cluster in clusters:
         if len(cluster) == 0:
@@ -353,9 +410,8 @@ def initialize_small_bistratified_cells(retina, group_size=6, lambda_sb=60.0, in
     """
     Cluster S-cone bipolar cells and diffuse bipolar cells into groups and create Small Bistratified Ganglion Cells.
     """
-    # TODO group S bipolar cells
-    clusters = [retina.small_bistratified_bipolar_cells[i:i + group_size] for i in
-                range(0, len(retina.diffuse_bipolar_cells), group_size)]
+    # Group S bipolar cells
+    clusters = cluster_bipolar_by_proximity(retina.bipolar_cells, group_size)
     small_bistratified_ganglion_cells = []
     for cluster in clusters:
         if len(cluster) == 0:
@@ -366,4 +422,3 @@ def initialize_small_bistratified_cells(retina, group_size=6, lambda_sb=60.0, in
         small_bistratified_ganglion_cells.append(sbg)
     retina.small_bistratified_ganglion_cells = small_bistratified_ganglion_cells
     return retina
-

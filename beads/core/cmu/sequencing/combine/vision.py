@@ -128,6 +128,14 @@ class Horizontal:
         return inhibited_stimulus
 
 
+def get_opponent_channels(L, M, S):
+    # Calculate opponent channels
+    rg = L - M
+    by = S - (L + M)
+    lum = L + M
+    return rg, by, lum
+
+
 def initialize_horizontal_cells(retina, inhibition_radius=10.0):
     """
     Creates horizontal cells from the existing photoreceptors (the “drops”).
