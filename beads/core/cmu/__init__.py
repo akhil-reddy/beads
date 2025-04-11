@@ -20,12 +20,3 @@ class Retina:
 
     def init_horizontal_cells(self, cells):
         self.horizontal_cells = cells
-
-    def init_bipolar_cells(self, cells):
-        self.bipolar_cells = cells
-
-    def init_amacrine_cells(self, cells):
-        self.amacrine_cells = cells
-
-    def init_ganglion_cells(self, cells):
-        self.ganglion_cells = cells
