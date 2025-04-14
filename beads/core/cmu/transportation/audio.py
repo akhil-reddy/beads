@@ -1,7 +1,56 @@
+import numpy as np
+
+
+###############################################################################
+# Neural Transducer
+###############################################################################
+class NeuralTransducer:
+    def __init__(self, membrane_time_constant=0.005, threshold=0.5, reset_potential=0.0):
+        """
+        A simple integrate-and-fire model that converts the ribbon synapse release rate
+        into a spike train.
+
+        Args:
+            membrane_time_constant (float): Integration time constant (s).
+            threshold (float): Voltage threshold for spike generation.
+            reset_potential (float): Membrane potential to reset to after a spike.
+
+        Research Basis:
+            - Basic integrate-and-fire models are widely used in auditory neuroscience to model
+              temporal encoding (see, e.g., Joris et al., 2004).
+        """
+        self.tau = membrane_time_constant
+        self.threshold = threshold
+        self.reset_potential = reset_potential
+        self.V = 0.0
+        self.spike_train = []
+
+    def update(self, release_rate, dt):
+        """
+        Update the membrane potential based on the release rate and generate spikes if the threshold is exceeded.
+
+        Args:
+            release_rate (float): Input from the ribbon synapse (vesicles/s, scaled).
+            dt (float): Time step (s).
+
+        Returns:
+            int: 1 if a spike is generated in this time step, else 0.
+        """
+        # Simple Euler integration.
+        dV = (-self.V + release_rate) * (dt / self.tau)
+        self.V += dV
+        if self.V >= self.threshold:
+            spike = 1
+            self.V = self.reset_potential  # reset after spiking
+        else:
+            spike = 0
+        self.spike_train.append(spike)
+        return spike
+
+
 ###############################################################################
 # Spiral Ganglion Neuron (SGN)
 ###############################################################################
-import numpy as np
 
 
 class SpiralGanglionNeuron:
