@@ -65,14 +65,14 @@ class EarCanal:
         """
         Args:
           fs (int): Sampling rate
-          length_m (float): ear canal length (~0.02–0.03 m) :contentReference[oaicite:6]{index=6}
-          gain_db (float): desired resonant boost in dB (~10–20 dB) :contentReference[oaicite:7]{index=7}
+          length_m (float): ear canal length (~0.02–0.03 m)
+          gain_db (float): desired resonant boost in dB (~10–20 dB)
         """
         self.fs = fs
         # quarter-wave resonance f = c/(4·L)
         c = 343.0  # speed of sound (m/s)
         f0 = c / (4 * length_m)
-        bw = f0 / 3  # approximate bandwidth :contentReference[oaicite:8]{index=8}
+        bw = f0 / 3  # approximate bandwidth
         # design bandpass
         low = (f0 - bw / 2) / (fs / 2)
         high = (f0 + bw / 2) / (fs / 2)
@@ -93,13 +93,13 @@ class OuterEar:
 
     def __init__(self, fs):
         self.fs = fs
-        # default notch/peak parameters from HRTF studies :contentReference[oaicite:9]{index=9}
+        # default notch/peak parameters from HRTF studies
         notch_freqs = [6e3, 8e3]  # spectral notches (Hz)
         notch_depths = [10, 8]  # dB
         peak_freqs = [4e3, 12e3]  # spectral peaks (Hz)
         peak_gains = [6, 4]  # dB
         self.pinna = Pinna(fs, notch_freqs, peak_freqs, notch_depths, peak_gains)
-        # ear canal resonance (~3 kHz, ~15 dB) :contentReference[oaicite:10]{index=10}
+        # ear canal resonance (~3 kHz, ~15 dB)
         self.canal = EarCanal(fs, length_m=0.025, gain_db=15)
 
     def process(self, x):
