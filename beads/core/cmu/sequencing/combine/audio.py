@@ -58,7 +58,7 @@ class OuterHairCell:
 
     def prestin_fraction(self):
         # Two-state Boltzmann for prestin charge movement
-        Veff = self.Vm - (self.cl_sens * (self.Cl - 140) / 1000.0)  # Cl shifts Vhalf
+        Veff = self.Vm - (self.cl_sens * (self.Cl - 140) / 1000.0)  # Cl shifts V half
         return 1.0 / (1 + np.exp(-(Veff - self.V_half) / self.z_slope))
 
     def electromechanical_force(self):
