@@ -59,6 +59,7 @@ class RibbonSynapse:
         self.R = R
         self.C = C
         self.I = I
+
         self.l = l
         self.r = r
         self.x = x
@@ -71,17 +72,21 @@ class RibbonSynapse:
         n_rel = np.random.binomial(int(self.R), p_rel)
         self.R -= n_rel
         self.C += n_rel
+
         # 2) Deterministic pool flows
+        dR = (self.x * self.I + self.y * (self.M - self.R)) * dt
         dC = - (self.l + self.r) * self.C * dt
         dI = (self.r * self.C - self.x * self.I) * dt
-        dR = (self.x * self.I + self.y * (self.M - self.R)) * dt
+
+        self.R += dR
         self.C += dC
         self.I += dI
-        self.R += dR
+
         # 3) Clamp non-negative
         self.R = max(0.0, self.R)
         self.C = max(0.0, self.C)
         self.I = max(0.0, self.I)
+
         # Return number of vesicles released
         return n_rel
 
