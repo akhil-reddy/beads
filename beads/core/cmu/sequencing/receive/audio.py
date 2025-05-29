@@ -15,7 +15,7 @@ class Pinna:
     def _design_notch(self, f0, depth, Q):
         # Bandstop around f0 with depth (dB)
         b, a = butter(2, [f0 / np.sqrt(Q) / (self.fs / 2), f0 * np.sqrt(Q) / (self.fs / 2)],
-                      btype='bandstop', fs=self.fs)
+                      btype='bandstop', fs=self.fs, output='ba')
         gain = 10 ** (-depth / 20)
         # Mix with identity to apply depth
         b = gain * np.array([1, 0, 0]) + (1 - gain) * b
@@ -24,7 +24,7 @@ class Pinna:
     def _design_peak(self, f0, gain_db, Q):
         # Bandpass around f0 with gain (dB)
         b, a = butter(2, [f0 / np.sqrt(Q) / (self.fs / 2), f0 * np.sqrt(Q) / (self.fs / 2)],
-                      btype='bandpass', fs=self.fs)
+                      btype='bandpass', fs=self.fs, output='ba')
         b *= 10 ** (gain_db / 20)
         return b, a
 
@@ -48,7 +48,7 @@ class EarCanal:
         f0 = c / (4 * length_m)
         bw = f0 / 3
         low, high = f0 - bw / 2, f0 + bw / 2
-        b, a = butter(2, [low / (fs / 2), high / (fs / 2)], btype='bandpass', fs=self.fs)
+        b, a = butter(2, [low / (fs / 2), high / (fs / 2)], btype='bandpass', fs=self.fs, output='ba')
         b *= 10 ** (gain_db / 20)
         self.b, self.a = b, a
 
