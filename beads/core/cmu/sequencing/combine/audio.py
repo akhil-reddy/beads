@@ -3,31 +3,30 @@ import numpy as np
 
 class BasilarMembrane:
     class Segment:
-        def __init__(self, cf, width_mm, stiffness, mass):
+        def __init__(self, cf, width, stiffness, mass):
             self.cf = cf
-            self.width_mm = width_mm
-            self.stiffness = stiffness  # N/m
-            self.mass = mass  # kg
-            self.velocity = 0.0  # m/s
-            self.displacement = 0.0  # m
-            self.force = 0.0  # N
+            self.width = width
+            self.stiffness = stiffness
+            self.mass = mass
+            self.velocity = 0.0
+            self.displacement = 0.0
+            self.force = 0.0
 
     def __init__(self, n=200, cf_range=(20, 20000)):
         cfs = np.logspace(np.log10(cf_range[1]), np.log10(cf_range[0]), n)
-        widths = np.linspace(8e-5, 6.5e-4, n)  # m
-        stiffness = 1.0 / widths  # N/m approx inverse
-        mass = np.full(n, 1e-9)  # kg, small
+        widths = np.linspace(8e-5, 6.5e-4, n)
+        stiffness = 1.0 / widths
+        mass = np.full(n, 1e-9)
         self.segments = [BasilarMembrane.Segment(cf, w, k, m)
                          for cf, w, k, m in zip(cfs, widths, stiffness, mass)]
 
-    def apply_pressure(self, pressure_spectrum):
+    def apply_pressure(self, pressure_map):
         for seg in self.segments:
-            p = pressure_spectrum.get(seg.cf, 0.0)
-            seg.force += p * seg.width_mm  # force ~ pressure×area
+            p = pressure_map.get(seg.cf, 0.0)
+            seg.force += p * seg.width
 
     def step(self, dt):
         for seg in self.segments:
-            # integrate simple mass-spring
             acc = (seg.force - seg.stiffness * seg.displacement) / seg.mass
             seg.velocity += acc * dt
             seg.displacement += seg.velocity * dt
@@ -88,4 +87,4 @@ class MedialOlivocochlear:
     def stimulate(self, rate):
         # rate: 0–100% release → sets efferent level on each OHC
         for ohc in self.ohcs:
-            ohc.eff = min(1.0, rate)
+            ohc.eff = np.clip(rate, 0.0, 1.0)

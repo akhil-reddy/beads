@@ -16,7 +16,7 @@ class InnerHairCell:
         self.seg = segment
         self.g_met = g_met
         self.tau = tau_mem
-        self.v = v_rest
+        self.v = v_rest + 0.001
         self.v_rest = v_rest
         self.v_thresh = v_thresh
         self.ca_exp = ca_exp
@@ -83,9 +83,7 @@ class RibbonSynapse:
         self.I += dI
 
         # 3) Clamp non-negative
-        self.R = max(0.0, self.R)
-        self.C = max(0.0, self.C)
-        self.I = max(0.0, self.I)
+        self.R, self.C, self.I = map(lambda v: max(v, 0.0), (self.R, self.C, self.I))
 
         # Return number of vesicles released
         return n_rel
