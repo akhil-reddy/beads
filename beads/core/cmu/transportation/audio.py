@@ -9,14 +9,14 @@ class AuditoryNerveFiber:
 
     def __init__(self,
                  fs,
-                 tau_m=0.0005,  # membrane time constant (s) ~0.5 ms citeturn0search1
+                 tau_m=0.0005,  # membrane time constant (s) ~0.5 ms
                  R_m=1e7,  # membrane resistance (Ohm) to scale input current
                  C_m=None,  # membrane capacitance (F), if None computed as tau_m/R_m
                  V_rest=-0.065,  # resting potential (V)
                  V_thresh=-0.050,  # spike threshold (V)
                  V_reset=-0.065,  # reset potential after spike (V)
-                 t_ref=0.0008,  # absolute refractory period (s) ~0.8 ms citeturn0search2
-                 noise_std=0.0005  # noise amplitude (V) approximating synaptic variability citeturn0search3
+                 t_ref=0.0008,  # absolute refractory period (s) ~0.8 ms
+                 noise_std=0.0005  # noise amplitude (V) approximating synaptic variability
                  ):
         self.fs = fs
         self.dt = 1.0 / fs
