@@ -95,17 +95,16 @@ def generate_spike_trains_volley(vesicle_releases, fs, fiber_params=None,
         for n in range(num_fibers):
             # Create per-fiber parameters with slight jitter
             params = fiber_params.copy()
+
             # Jitter threshold by ±param_jitter fraction
             base_thresh = fiber_params.get('V_thresh', -0.050)
             jittered_thresh = base_thresh * (1 + param_jitter * (np.random.rand()*2 - 1))
             params['V_thresh'] = jittered_thresh
-            # Jitter noise_std similarly
+
+            # Jitter noise_std
             base_noise = fiber_params.get('noise_std', 0.0005)
             jittered_noise = base_noise * (1 + param_jitter * (np.random.rand()*2 - 1))
             params['noise_std'] = jittered_noise
-            # Optionally jitter other parameters (e.g., tau_m) if desired:
-            # base_tau = fiber_params.get('tau_m', 0.0005)
-            # params['tau_m'] = base_tau * (1 + param_jitter*(np.random.rand()*2 - 1))
 
             # Instantiate fiber
             anf = AuditoryNerveFiber(fs, **params)
