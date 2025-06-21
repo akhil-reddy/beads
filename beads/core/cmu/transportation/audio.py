@@ -110,7 +110,7 @@ def generate_spike_trains_volley(vesicle_releases, fs, fiber_params=None,
             anf = AuditoryNerveFiber(fs, **params)
             # Simulate
             spikes = anf.simulate(I_syn_array)
-            if not spikes:
+            if spikes:
                 channel_trains.append(spikes)
         all_spike_trains.append(channel_trains)
 
