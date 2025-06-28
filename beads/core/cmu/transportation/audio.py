@@ -1,20 +1,22 @@
 import numpy as np
 
+
 class AuditoryNerveFiber:
     """
     Leaky Integrate-and-Fire model for auditory nerve fibers (ANFs), incorporating
     membrane filtering, absolute refractory period, and synaptic input from IHC release.
     """
+
     def __init__(self,
                  fs,
-                 tau_m=0.0005,      # membrane time constant (s) ~0.5 ms
-                 R_m=1e7,           # membrane resistance (Ohm)
-                 C_m=None,          # capacitance (F), if None: tau_m/R_m
-                 V_rest=-0.065,     # resting potential (V)
-                 V_thresh=-0.050,   # spike threshold (V)
-                 V_reset=-0.065,    # reset potential after spike (V)
-                 t_ref=0.0008,      # absolute refractory period (s) ~0.8 ms
-                 noise_std=0.0005   # noise amplitude (V) approximating synaptic variability
+                 tau_m=0.0005,  # membrane time constant (s) ~0.5 ms
+                 R_m=1e7,  # membrane resistance (Ohm)
+                 C_m=None,  # capacitance (F), if None: tau_m/R_m
+                 V_rest=-0.065,  # resting potential (V)
+                 V_thresh=-0.050,  # spike threshold (V)
+                 V_reset=-0.065,  # reset potential after spike (V)
+                 t_ref=0.0008,  # absolute refractory period (s) ~0.8 ms
+                 noise_std=0.0005  # noise amplitude (V) approximating synaptic variability
                  ):
         self.fs = fs
         self.dt = 1.0 / fs
@@ -98,12 +100,12 @@ def generate_spike_trains_volley(vesicle_releases, fs, fiber_params=None,
 
             # Jitter threshold by ±param_jitter fraction
             base_thresh = fiber_params.get('V_thresh', -0.050)
-            jittered_thresh = base_thresh * (1 + param_jitter * (np.random.rand()*2 - 1))
+            jittered_thresh = base_thresh * (1 + param_jitter * (np.random.rand() * 2 - 1))
             params['V_thresh'] = jittered_thresh
 
             # Jitter noise_std
             base_noise = fiber_params.get('noise_std', 0.0005)
-            jittered_noise = base_noise * (1 + param_jitter * (np.random.rand()*2 - 1))
+            jittered_noise = base_noise * (1 + param_jitter * (np.random.rand() * 2 - 1))
             params['noise_std'] = jittered_noise
 
             # Instantiate fiber
