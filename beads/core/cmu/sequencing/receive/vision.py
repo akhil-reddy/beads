@@ -7,8 +7,6 @@ import math
 import random
 import numpy as np
 
-from beads.core.cmu import Retina
-
 
 # -- Govardovskii nomogram functions ------------------------------------------
 def govardovskii_nomogram(wavelength, lambda_max):
