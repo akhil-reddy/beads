@@ -1,5 +1,6 @@
 import numpy as np
 
+
 class CochlearNucleusCell:
     """
     Base class for cochlear nucleus neurons using an LIF formulation.
