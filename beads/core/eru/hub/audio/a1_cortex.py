@@ -28,8 +28,7 @@ class SpectroTemporalReceptiveField:
         # Temporal Gabor window
         times = np.arange(num_taps) / fs
         delay = best_delay_idx / fs
-        self.temporal = np.exp(-0.5 * ((times - delay) / temporal_sigma) ** 2) * \
-                        np.cos(2 * np.pi * modulation_rate * (times - delay))
+        self.temporal = np.exp(-0.5 * ((times - delay) / temporal_sigma) ** 2) * np.cos(2 * np.pi * modulation_rate * (times - delay))
         self.strf = weight * np.outer(self.spectral, self.temporal)
 
     def apply(self, spectrogram):
