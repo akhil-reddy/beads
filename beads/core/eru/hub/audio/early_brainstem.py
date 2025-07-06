@@ -176,7 +176,7 @@ class EarlyBrainstem:
         Returns dict with cochlear nucleus outputs, MSO, LSO, and updated efferent gain.
         """
         cn_out = {ctype: [] for ctype in self.cn_cells}
-        # Process each channel through CN
+        # Process each channel through CN (Cochlear Nucleus)
         for ch_idx, fibers in enumerate(anf_spike_trains):
             spikes = np.sort(np.hstack(fibers))
             cmd = np.zeros(int(duration * self.fs))
