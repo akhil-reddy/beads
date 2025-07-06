@@ -19,68 +19,117 @@ class SpectroTemporalReceptiveField:
                  fs,
                  freq_res,
                  weight=1.0):
+        self.fs = fs
         self.num_freqs = num_freqs
         self.num_taps = num_taps
-        self.fs = fs
-        self.freq_res = freq_res
-        self.weight = weight
-        # build Gaussian spectral profile
+        # Gaussian spectral tuning
         freqs = np.arange(num_freqs)
         self.spectral = np.exp(-0.5 * ((freqs - center_freq_idx) / freq_bandwidth) ** 2)
-        # build temporal Gabor (cosine-modulated Gaussian)
+        # Temporal Gabor window
         times = np.arange(num_taps) / fs
         delay = best_delay_idx / fs
         self.temporal = np.exp(-0.5 * ((times - delay) / temporal_sigma) ** 2) * \
                         np.cos(2 * np.pi * modulation_rate * (times - delay))
-        # outer product yields STRF
         self.strf = weight * np.outer(self.spectral, self.temporal)
 
     def apply(self, spectrogram):
-        """
-        Convolve STRF with input spectrogram (freq × time) and return response over time.
-        spectrogram: 2D array shape (freq × time)
-        returns: 1D array of neural drive (time)
-        """
-        # full 2D convolution, valid mode yields (freq-f+1, time-t+1)
+        # 2D convolution and sum across frequency
         conv = convolve2d(spectrogram, self.strf, mode='valid')
-        # sum across frequency rows to get time series
-        drive = conv.sum(axis=0)
-        return drive
+        return conv.sum(axis=0)
 
 
-class A1Neuron:
+class ShortTermSynapse:
     """
-    Simple linear-nonlinear Poisson neuron for A1.
-    Drive → spike rate via exp nonlinearity → Poisson spiking.
+    Implements Tsodyks-Markram depression and facilitation dynamics.
+    Based on models by Tsodyks et al. (1998).
+    u: utilization, R: resources
+    """
+
+    def __init__(self, U=0.5, tau_rec=0.8, tau_fac=0.0, dt=0.001):
+        self.U = U
+        self.R = 1.0
+        self.u = U
+        self.tau_rec = tau_rec
+        self.tau_fac = tau_fac
+        self.dt = dt
+
+    def step(self, spike_train):  # spike_train: binary array
+        I = np.zeros_like(spike_train, float)
+        for t, s in enumerate(spike_train):
+            if s:
+                self.u += (self.U - self.u) * (1 - np.exp(-self.dt / self.tau_fac)) if self.tau_fac > 0 else self.U
+                I[t] = self.u * self.R
+                self.R -= self.u * self.R
+            # recover resources
+            self.R += (1 - self.R) * (1 - np.exp(-self.dt / self.tau_rec))
+        return I
+
+
+class ConductanceLIFNeuron:
+    """
+    Conductance-based LIF with synaptic and adaptation currents, per Brette & Gerstner (2005).
     """
 
     def __init__(self,
-                 strf: SpectroTemporalReceptiveField,
-                 baseline_rate=5.0,  # spikes/s
-                 gain=1.0,
-                 dt=0.001):  # time bin (s)
-        self.strf = strf
-        self.baseline = baseline_rate
-        self.gain = gain
+                 dt=0.001,
+                 C_m=200e-12,  # membrane capacitance (F)
+                 g_L=10e-9,  # leak conductance (S)
+                 E_L=-0.070,  # leak reversal (V)
+                 V_th=-0.050,  # threshold (V)
+                 V_reset=-0.065,  # reset potential (V)
+                 t_ref=0.002,  # refractory (s)
+                 E_e=0.0,  # excitatory reversal (V)
+                 tau_e=0.005,  # excitatory synapse decay (s)
+                 w_e=1e-9,  # synaptic weight scale
+                 a=2e-9,  # subthreshold adaptation conductance (S)
+                 tau_w=0.2  # adaptation time constant (s)
+                 ):
         self.dt = dt
+        self.C_m = C_m
+        self.g_L = g_L
+        self.E_L = E_L
+        self.V = E_L
+        self.V_th = V_th
+        self.V_reset = V_reset
+        self.t_ref = t_ref
+        self.refrac = 0
+        self.E_e = E_e
+        self.tau_e = tau_e
+        self.w_e = w_e
+        self.ge = 0.0
+        self.a = a
+        self.w = 0.0  # adaptation variable
+        self.tau_w = tau_w
 
-    def simulate(self, spectrogram):
-        """
-        Given a spectrogram (freq × time), produce spike times (s).
-        """
-        drive = self.strf.apply(spectrogram)
-        # instantaneous rate (spikes/s)
-        rate = self.baseline + self.gain * np.exp(drive)
-        # generate Poisson spikes per bin
-        spike_bins = np.where(np.random.rand(len(rate)) < rate * self.dt)[0]
-        return spike_bins * self.dt
+    def step(self, spike_input):
+        # update synaptic conductance
+        self.ge += self.w_e * spike_input
+        # conductance decay
+        self.ge -= self.dt * (self.ge / self.tau_e)
+        # refractory handling
+        if self.refrac > 0:
+            self.refrac -= self.dt
+            self.V = self.V_reset
+            return False
+        # membrane potential update
+        I_L = self.g_L * (self.E_L - self.V)
+        I_e = self.ge * (self.E_e - self.V)
+        I_adapt = self.w * (self.E_L - self.V)
+        dV = (I_L + I_e + I_adapt) / self.C_m
+        self.V += self.dt * dV
+        # adaptation variable
+        self.w += self.dt * (self.a * (self.V - self.E_L) - self.w) / self.tau_w
+        # spike condition
+        if self.V >= self.V_th:
+            self.V = self.V_reset
+            self.refrac = self.t_ref
+            return True
+        return False
 
 
 class PrimaryAuditoryCortex:
     """
-    Network of A1 neurons with diverse STRFs.
-    Inputs: spectrogram (freq × time)
-    Outputs: list of spike trains (s) per neuron.
+    Biophysically-inspired A1 network with STRFs, dynamic synapses & conductance LIF neurons.
     """
 
     def __init__(self,
@@ -91,29 +140,29 @@ class PrimaryAuditoryCortex:
                  num_taps=64):
         self.fs = fs
         self.dt = 1.0 / fs
-        self.freq_res = freq_res
-        self.num_neurons = num_neurons
-        # Create a diverse bank of STRFs
-        self.neurons = []
+        self.units = []
         for _ in range(num_neurons):
-            # randomize STRF parameters within physiological ranges
+            # random STRF
             cf = np.random.randint(10, num_freqs - 10)
             bw = np.random.uniform(1.0, 5.0)
             bd = np.random.randint(5, num_taps - 5)
-            ts = np.random.uniform(0.01, 0.05)  # 10–50 ms
-            mr = np.random.uniform(2.0, 20.0)  # 2–20 Hz modulation
-            strf = SpectroTemporalReceptiveField(
-                num_freqs, num_taps, cf, bw, bd, ts, mr, fs, freq_res)
-            neuron = A1Neuron(strf, dt=self.dt)
-            self.neurons.append(neuron)
+            ts = np.random.uniform(0.01, 0.05)
+            mr = np.random.uniform(2.0, 20.0)
+            strf = SpectroTemporalReceptiveField(num_freqs, num_taps, cf, bw, bd, ts, mr, fs, freq_res)
+            syn = ShortTermSynapse(U=0.4, tau_rec=0.5, tau_fac=0.0, dt=self.dt)
+            neuron = ConductanceLIFNeuron(dt=self.dt)
+            self.units.append({'strf': strf, 'syn': syn, 'neu': neuron})
 
     def run(self, spectrogram):
-        """
-        Run all A1 neurons on the input spectrogram.
-        Returns dict of spike trains per neuron index.
-        """
-        outputs = {}
-        for idx, neuron in enumerate(self.neurons):
-            spikes = neuron.simulate(spectrogram)
-            outputs[idx] = spikes
-        return outputs
+        T = spectrogram.shape[1] - self.units[0]['strf'].num_taps + 1
+        spikes_out = {i: [] for i in range(len(self.units))}
+        # compute drives
+        for i, unit in enumerate(self.units):
+            drive = unit['strf'].apply(spectrogram)
+            # binarize drive for synapse step (simplified)
+            input_spikes = drive > np.percentile(drive, 90)
+            syn_current = unit['syn'].step(input_spikes)
+            for t in range(T):
+                if unit['neu'].step(syn_current[t]):
+                    spikes_out[i].append(t * self.dt)
+        return spikes_out
