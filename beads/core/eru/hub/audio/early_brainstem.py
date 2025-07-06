@@ -169,15 +169,18 @@ class EarlyBrainstem:
         self.efferent_gain = 1.0 + 0.1 * np.tanh(1.0 / (1 + spatial_strength))
         return self.efferent_gain
 
-    def run(self, anf_spike_trains, duration):
+    def run(self, anf_spike_train_left, anf_spike_train_right, duration):
         """
-        anf_spike_trains: list of lists per channel of AN spike arrays.
+        anf_spike_train_left: list of lists per channel of AN spike arrays from left ear.
+        anf_spike_train_right: list of lists per channel of AN spike arrays from right ear.
         duration: simulation time in seconds.
         Returns dict with cochlear nucleus outputs, MSO, LSO, and updated efferent gain.
         """
-        cn_out = {ctype: [] for ctype in self.cn_cells}
-        # Process each channel through CN (Cochlear Nucleus)
-        for ch_idx, fibers in enumerate(anf_spike_trains):
+        cn_left = {ctype: [] for ctype in self.cn_cells}
+        cn_right = {ctype: [] for ctype in self.cn_cells}
+
+        # Process each channel of left ear through CN (Cochlear Nucleus)
+        for ch_idx, fibers in enumerate(anf_spike_train_left):
             spikes = np.sort(np.hstack(fibers))
             cmd = np.zeros(int(duration * self.fs))
             for t in spikes:
@@ -190,16 +193,34 @@ class EarlyBrainstem:
                 for i, I in enumerate(cmd):
                     if cell.step(I):
                         out_times.append(i / self.fs)
-                cn_out[ctype].append(np.array(out_times))
+                cn_left[ctype].append(np.array(out_times))
+
+        # Process each channel of right ear through CN (Cochlear Nucleus)
+        for ch_idx, fibers in enumerate(anf_spike_train_right):
+            spikes = np.sort(np.hstack(fibers))
+            cmd = np.zeros(int(duration * self.fs))
+            for t in spikes:
+                idx = int(t * self.fs)
+                if idx < len(cmd):
+                    cmd[idx] += 1e-9 * self.efferent_gain
+            for ctype, cells in self.cn_cells.items():
+                cell = cells[ch_idx]
+                out_times = []
+                for i, I in enumerate(cmd):
+                    if cell.step(I):
+                        out_times.append(i / self.fs)
+                cn_right[ctype].append(np.array(out_times))
+
         # Binaural processing on bushy outputs of first two channels
-        left = cn_out['bushy'][0]
-        right = cn_out['bushy'][1] if len(cn_out['bushy']) > 1 else np.array([])
+        left = np.sort(np.hstack(cn_left['bushy']))
+        right = np.sort(np.hstack(cn_right['bushy']))
         mso_spikes = self.mso.process(left, right, duration)
         lso_spikes = self.lso.process(left, right, duration)
         # Update efferent gain
         new_gain = self.efferent_feedback(mso_spikes, lso_spikes)
         return {
-            'cochlear_nucleus': cn_out,
+            'cochlear_nucleus_left': cn_left,
+            'cochlear_nucleus_right': cn_right,
             'mso': mso_spikes,
             'lso': lso_spikes,
             'efferent_gain': new_gain
