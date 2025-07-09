@@ -1,7 +1,7 @@
 import numpy as np
 from scipy.signal import convolve2d
 
-
+# TODO: Improve this to elements from ERU design
 class SpectroTemporalReceptiveField:
     """
     Implements 2D Gabor-like STRFs for A1 neurons (frequency × time).
@@ -63,7 +63,7 @@ class ShortTermSynapse:
             self.R += (1 - self.R) * (1 - np.exp(-self.dt / self.tau_rec))
         return I
 
-
+# TODO: Improve this to elements from ERU design
 class ConductanceLIFNeuron:
     """
     Conductance-based LIF with synaptic and adaptation currents, per Brette & Gerstner (2005).
@@ -158,7 +158,7 @@ class PrimaryAuditoryCortex:
         # compute drives
         for i, unit in enumerate(self.units):
             drive = unit['strf'].apply(spectrogram)
-            # binarize drive for synapse step (simplified)
+            # binarize drive for the synapse step (simplified)
             input_spikes = drive > np.percentile(drive, 90)
             syn_current = unit['syn'].step(input_spikes)
             for t in range(T):
