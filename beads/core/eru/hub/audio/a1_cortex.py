@@ -46,7 +46,7 @@ class SpectroTemporalReceptiveField:
         # Sum over frequency axis to get temporal drive
         return np.sum(conv, axis=0)
 
-
+# TODO: Bring in elements from ERU Design
 # ----------------------------------------------------------------------------
 # Tsodyks-Markram dynamic synapse with vectorized exponential updates
 # ----------------------------------------------------------------------------
@@ -166,7 +166,6 @@ class ConductanceLIFNeuron:
         return False
 
 
-# TODO: Bring in elements from ERU Design
 # ----------------------------------------------------------------------------
 # PrimaryAuditoryCortex network: integrates STRFs, dynamic synapses & LIF neurons
 # ----------------------------------------------------------------------------
