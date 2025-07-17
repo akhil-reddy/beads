@@ -22,7 +22,7 @@ ideas
 
 ## License
 
-The Beads framework is licensed under GPL 3.0, as found in the LICENSE file.
+The Beads framework is licensed under ARUL 1.0, as found in the LICENSE file.
 
 ## Navigation
 
