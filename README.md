@@ -3,7 +3,7 @@
 </div>
 
 
-A micro-collaborative 'bead' ecosystem that enables multi-modal cognition, task autonomy and adaptive intelligence.
+A micro-collaborative 'BEADS' (Biophysical Electrochemical Adaptive Dynamical Spiking-AGI) ecosystem that enables multi-modal cognition, task autonomy and adaptive intelligence.
 
 For context on this project, I would highly recommend a read of the below blog.
 
