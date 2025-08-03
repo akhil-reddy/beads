@@ -5,7 +5,7 @@ from beads.core.eru.hub.audio.a1_cortex import ShortTermSynapse, ConductanceLIFN
 
 
 # ----------------------------------------
-# 1. Retinal & LGN Front-End (unchanged)
+# 1. Retinal & LGN Front-End
 # ----------------------------------------
 class PhotoreceptorArray:
     def __init__(self, sens_curves):
