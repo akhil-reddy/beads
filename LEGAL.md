@@ -38,3 +38,4 @@ The following conditions apply:
 ---
 
 For inquiries regarding licensing, collaboration, or legal clarity, contact akhilkred@gmail.com
+For license terms, see [LICENSE](./LICENSE).
