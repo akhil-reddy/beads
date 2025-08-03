@@ -7,7 +7,7 @@ This software is licensed strictly for **non-commercial**, **non-military**, and
 
 ───────────────────────────────────────────────────────────────────────────────
 
-1. Permitted Use
+### 1. Permitted Use
 
 You may:
 - Use the Software for **non-commercial academic research or education**.
@@ -17,7 +17,7 @@ You may:
   - It maintains clear and visible attribution.
   - It includes this exact license without alteration.
 
-2. Strong Copyleft (Stronger Than AGPL)
+### 2. Strong Copyleft (Stronger Than AGPL)
 
 If you modify, adapt, or deploy this Software in **any form** — including:
 - Web apps
@@ -34,7 +34,7 @@ Then you **must**:
 
 There are **no exemptions for internal, experimental, or cloud-based use**.
 
-3. Prohibited Use (Absolute)
+### 3. Prohibited Use (Absolute)
 
 You are **strictly prohibited** from using this Software in:
 - Any **commercial product, system, or service**
@@ -54,13 +54,13 @@ You are **strictly prohibited** from using this Software in:
 
 Violation of this clause constitutes a **material breach** and may trigger permanent license revocation, legal action, and public notice of misuse.
 
-4. Licensing and Monetization
+### 4. Licensing and Monetization
 
 - **Commercial use is disallowed** unless explicitly negotiated with and licensed by the Author.
 - No sublicensing, re-licensing, or dual-licensing is permitted.
 - You may **not charge** for access to this Software, its derivatives, or related services (e.g., SaaS).
 
-5. Required Attribution
+### 5. Required Attribution
 
 All forks, papers, or products using this Software **must include**:
 
@@ -70,16 +70,16 @@ All forks, papers, or products using this Software **must include**:
   - The original GitHub repository
   - The ARUL v1.0 license text
 
-6. No Alteration of License
+### 6. No Alteration of License
 
 You may **not** modify, reinterpret, or remove this license. Any modified license is void.
 
-7. Warranty Disclaimer
+### 7. Warranty Disclaimer
 
 THE SOFTWARE IS PROVIDED “AS IS”, WITHOUT WARRANTY OF ANY KIND.  
 THE AUTHOR IS NOT LIABLE FOR ANY DAMAGE, MISUSE, OR ETHICAL CONSEQUENCE ARISING FROM THIS SOFTWARE.
 
-8. Enforcement
+### 8. Enforcement
 
 Violation of this license may:
 - Revoke your rights permanently and immediately
