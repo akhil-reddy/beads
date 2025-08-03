@@ -33,6 +33,7 @@ The following conditions apply:
 * The author retains **sole intellectual ownership** of all designs and architectures beyond the Beads project.
 * Future work is not hosted on this platform and remains in **private conceptual form**.
 * As an Indian national, the author asserts that **all ideas originate under Indian jurisdiction** and do not fall under U.S. ownership or grant-derived restrictions.
+* This publication serves as a defensive disclosure of the architecture and learning algorithms described herein, and may be used to invalidate future patent claims by third parties attempting to monopolize similar approaches.
 
 ---
 
