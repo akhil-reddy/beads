@@ -38,4 +38,4 @@ The following conditions apply:
 ---
 
 For inquiries regarding licensing, collaboration, or legal clarity, contact akhilkri@usc.edu
-For license terms, see [LICENSE](./LICENSE).
+For license terms, see [LICENSE](./LICENSE.md).
