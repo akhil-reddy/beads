@@ -1,6 +1,6 @@
 ## Legal Disclaimer – Public Domain Declaration (Export Control Exemption)
 
-**Author:** Akhil K.
+**Author:** Akhil K. Reddy
 
 **Project:** *Beads – Biophysical AGI Architecture*
 
@@ -10,7 +10,7 @@
 
 ---
 
-This website and associated code repository are provided **solely by Akhil K., an independent Indian national researcher**, and contain original theoretical and algorithmic work relating to the *Beads* project — a biologically grounded spiking neural architecture for AGI.
+This website and associated code repository are provided **solely by Akhil K. Reddy, an independent Indian national researcher**, and contain original theoretical and algorithmic work relating to the *Beads* project — a biologically grounded spiking neural architecture for AGI.
 
 The following conditions apply:
 
@@ -37,5 +37,5 @@ The following conditions apply:
 
 ---
 
-For inquiries regarding licensing, collaboration, or legal clarity, contact akhilkred@gmail.com
+For inquiries regarding licensing, collaboration, or legal clarity, contact akhilkri@usc.edu
 For license terms, see [LICENSE](./LICENSE).
