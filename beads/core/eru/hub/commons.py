@@ -2,6 +2,7 @@ import numpy as np
 from scipy.integrate import solve_ivp
 from beads.core.eru.hub.audio.a1_cortex import ShortTermSynapse
 
+
 # ----------------------------------------------------------------------------
 # Utilities: safe vtrap for HH rates
 # ----------------------------------------------------------------------------
@@ -13,6 +14,7 @@ def vtrap(x):
     out[small] = 1.0 - x[small] / 2.0
     out[~small] = x[~small] / (np.exp(x[~small]) - 1.0)
     return out
+
 
 # ----------------------------------------------------------------------------
 # Receptor (double exponential) with optional NMDA Mg2+ voltage dependence
@@ -65,6 +67,7 @@ class Receptor:
         vd = "NMDA-like" if self.voltage_dependent else "non-voltage-dependent"
         return f"<Receptor {self.name} {vd} loc={self.location} gmax={self.g_max}>"
 
+
 # ----------------------------------------------------------------------------
 # Two-Compartment Hodgkin-Huxley Neuron with receptors embedded in ODE state
 # ----------------------------------------------------------------------------
@@ -75,16 +78,17 @@ class MultiCompartmentNeuron:
     are integrated consistently with membrane voltages and HH gates.
     Units: volt (V) for voltages internally; time in seconds.
     """
+
     def __init__(self, params):
-        self.C = np.array(params['C'], dtype=float)        # [C_soma, C_dend] in Farads
-        self.g_L = np.array(params['g_L'], dtype=float)    # [gL_soma, gL_dend] in Siemens
-        self.E_L = float(params['E_L'])                    # leak reversal (V)
-        self.g_Na = float(params['g_Na'])                  # soma Na max conductance (S)
-        self.E_Na = float(params['E_Na'])                  # Na reversal (V)
-        self.g_K = float(params['g_K'])                    # soma K max conductance (S)
-        self.E_K = float(params['E_K'])                    # K reversal (V)
-        self.g_c = float(params['g_c'])                    # coupling conductance (S)
-        self.dt = params.get('dt', 0.1e-4)                 # integration bin in seconds
+        self.C = np.array(params['C'], dtype=float)  # [C_soma, C_dend] in Farads
+        self.g_L = np.array(params['g_L'], dtype=float)  # [gL_soma, gL_dend] in Siemens
+        self.E_L = float(params['E_L'])  # leak reversal (V)
+        self.g_Na = float(params['g_Na'])  # soma Na max conductance (S)
+        self.E_Na = float(params['E_Na'])  # Na reversal (V)
+        self.g_K = float(params['g_K'])  # soma K max conductance (S)
+        self.E_K = float(params['E_K'])  # K reversal (V)
+        self.g_c = float(params['g_c'])  # coupling conductance (S)
+        self.dt = params.get('dt', 0.1e-4)  # integration bin in seconds
 
         V0 = params.get('V0', self.E_L)
         m0 = params.get('m0', 0.05)
@@ -223,13 +227,14 @@ class MultiCompartmentNeuron:
                 y[idx_x] += float(syn_release[i, j])
 
             sol = solve_ivp(fun=self.derivatives, t_span=(t_start, t_end), y0=y,
-                            method='BDF', atol=1e-8, rtol=1e-6, max_step=dt/4.0)
+                            method='BDF', atol=1e-8, rtol=1e-6, max_step=dt / 4.0)
 
             y = sol.y[:, -1]
             times.append(t_end)
             Vs_trace.append(y[0])
 
         return np.array(times), np.array(Vs_trace)
+
 
 # ----------------------------------------------------------------------------
 # Biophysical ERU Hub glue code
@@ -243,9 +248,10 @@ class BiophysicalERUHub:
         self.syn = ShortTermSynapse(**syn_params)
 
     def step(self, spike_train):
-        I_syn = self.syn.step(spike_train)   # expected (T, Nrec)
+        I_syn = self.syn.step(spike_train)  # expected (T, Nrec)
         times, V = self.neuron.step(I_syn)
         return times, V
+
 
 # ----------------------------------------------------------------------------
 # Example quick test when run as __main__
