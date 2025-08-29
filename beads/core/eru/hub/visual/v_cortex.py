@@ -173,63 +173,270 @@ class V1:
 
 
 # ---------------------------
-# V2, V4, IT (simple pooling/aggregation classes)
+# V2 / V4 / IT (using MultiCompartmentNeuron)
 # ---------------------------
+def bin_spikes_to_matrix(spike_lists, T_bins, dt):
+    """
+    Convert a list of spike-time arrays (seconds) to binary matrix (N_units, T_bins).
+    dt is time per bin (s).
+    """
+    N = len(spike_lists)
+    mat = np.zeros((N, T_bins), dtype=float)
+    for i, times in enumerate(spike_lists):
+        if len(times) == 0:
+            continue
+        # convert times to bin indices
+        idx = np.floor(np.asarray(times) / dt).astype(int)
+        idx = idx[(idx >= 0) & (idx < T_bins)]
+        # allow multi-spikes per bin by counting
+        unique, counts = np.unique(idx, return_counts=True)
+        mat[i, unique] = counts
+    return mat
+
+
+class V2Unit:
+    """
+    A V2 neuron that pools a small neighborhood of V1 units with orientation-weighted
+    excitatory inputs and an inhibitory surround pool for divisive normalization.
+    Integrates presynaptic release via ShortTermSynapse and MultiCompartmentNeuron.
+    """
+
+    def __init__(self, presyn_indices, weights, inh_indices=None,
+                 neuron_params=None, syn_params=None):
+        self.presyn = np.array(presyn_indices, dtype=int)  # indices of V1 units
+        self.w = np.array(weights, dtype=float)  # same length
+        self.inh = np.array(inh_indices, dtype=int) if inh_indices is not None else np.array([], dtype=int)
+        # create synapses (one ShortTermSynapse per excitatory presynapse for realism)
+        self.syn_exc = [ShortTermSynapse(**(syn_params or {})) for _ in self.presyn]
+        self.syn_inh = [ShortTermSynapse(**(syn_params or {})) for _ in self.inh]
+        self.neu = MultiCompartmentNeuron(neuron_params.copy())  # expects receptors to be added by caller
+        # caller should add AMPA/NMDA receptors to self.neu
+        # scaling constants:
+        self.exc_gain = 1.0
+        self.inh_gain = 0.8
+
+    def run(self, presyn_spike_mat, T_bins):
+        """
+        presyn_spike_mat: (N_v1, T_bins) binary/count matrix
+        Returns: spike times array (seconds) from this V2 unit
+        """
+        # build per-bin excitatory drive: weighted sum of presyn spike counts
+        drives = np.zeros(T_bins, dtype=float)
+        for k, idx in enumerate(self.presyn):
+            s = presyn_spike_mat[idx]  # (T_bins,)
+            rel = self.syn_exc[k].step(s)  # release per-bin
+            drives += self.w[k] * rel
+        # inhibitory divisive normalization using summed inh activity
+        inh_drive = 0.0
+        if len(self.inh) > 0:
+            inh_sum = np.zeros(T_bins, dtype=float)
+            for k, idx in enumerate(self.inh):
+                s = presyn_spike_mat[idx]
+                rel = self.syn_inh[k].step(s)
+                inh_sum += rel
+            # implement divisive normalization by scaling excitation
+            denom = 1.0 + self.inh_gain * np.convolve(inh_sum, np.ones(3) / 3.0, mode='same')
+            drives /= denom + 1e-12
+
+        # Map drives to receptors and step neuron
+        # Map drives -> [AMPA, NMDA] release amplitudes (simple split)
+        syn_release = np.stack([drives * self.exc_gain, drives * (0.5 * self.exc_gain)], axis=1)
+        times, Vs = self.neu.step(syn_release, t0=0.0)
+        # simple spike detection on Vs peaks
+        thr = -30e-3
+        idx = np.where(Vs >= thr)[0]
+        spike_bins = np.unique(idx)
+        spike_times = spike_bins * self.neu.dt
+        return spike_times
+
+
 class V2:
-    def __init__(self, v1_obj, pool=(2, 2)):
+    """
+    V2 layer that constructs units by pooling localized V1 indices.
+    """
+
+    def __init__(self, v1_obj, n_units=64, pool_radius=2, neuron_params=None, syn_params=None):
         self.v1 = v1_obj
-        self.pool = pool
+        self.n_units = n_units
+        self.pool_radius = pool_radius
+        # infer grid layout of v1 from v1 unit centers if present, else assume square
+        Nv1 = len(self.v1.units)
+        grid = int(np.sqrt(Nv1))
+        coords = np.array([u['center'] for u in self.v1.units]) if 'center' in self.v1.units[0] else \
+            np.array([(i, j) for i in range(grid) for j in range(grid)])
+        # build list of indices per unit
+        self.units = []
+        rng = np.random.default_rng(0)
+        for n in range(n_units):
+            # pick center at random across V1 units
+            center_idx = rng.integers(0, Nv1)
+            ci, cj = coords[center_idx]
+            # select neighbors within euclidean radius in pixel-space by comparing centers
+            dists = np.linalg.norm(coords - coords[center_idx], axis=1)
+            presyn_idx = np.where(dists <= pool_radius)[0].tolist()
+            # weights: gaussian by distance
+            sigma = max(1.0, pool_radius / 2.0)
+            weights = np.exp(-0.5 * (dists[presyn_idx] / sigma) ** 2)
+            # inhibitory pool: choose some units at slightly larger radius
+            inh_idx = np.where((dists > pool_radius) & (dists <= pool_radius * 2))[0].tolist()
+            # create V2 unit
+            unit = V2Unit(presyn_idx, weights, inh_indices=inh_idx,
+                          neuron_params=(neuron_params or self._default_neuron_params()),
+                          syn_params=(syn_params or self._default_syn_params()))
+            # add receptors (AMPA soma, NMDA dend) to unit's neuron
+            unit.neu.add_receptor(
+                Receptor(g_max=1.0e-9, E_rev=0.0, tau_rise=0.0008, tau_decay=0.004, location='soma', name='AMPA',
+                         voltage_dependent=False))
+            unit.neu.add_receptor(
+                Receptor(g_max=0.6e-9, E_rev=0.0, tau_rise=0.004, tau_decay=0.08, location='dend', name='NMDA',
+                         voltage_dependent=True))
+            self.units.append(unit)
+
+    def _default_neuron_params(self):
+        return {'C': [200e-12, 200e-12], 'g_L': [10e-9, 10e-9], 'E_L': -65e-3,
+                'g_Na': 1200e-9, 'E_Na': 50e-3, 'g_K': 360e-9, 'E_K': -77e-3,
+                'g_c': 5e-9, 'dt': 1.0 / self.v1.fs}
+
+    def _default_syn_params(self):
+        return {'U': 0.4, 'tau_rec': 0.4, 'tau_fac': 0.0, 'dt': 1.0 / self.v1.fs}
 
     def process(self, video_gray):
-        # naive pooling of V1 spike counts into V2 units
-        v1_spikes = self.v1.process(video_gray)  # list of arrays
-        # sum rates across local neighborhoods to produce V2 "responses"
-        # return list of spike arrays (placeholder simple mapping)
+        # compute v1 spikes and bin them
+        v1_spike_lists = self.v1.process(video_gray)  # list length Nv1, times in seconds
+        # determine T_bins from V1 feature maps length
+        T_frames = video_gray.shape[0]
+        T_bins = T_frames - len(self.v1.strf.temporal) + 1
+        dt = 1.0 / self.v1.fs
+        v1_mat = bin_spikes_to_matrix(v1_spike_lists, T_bins, dt)  # (Nv1, T_bins)
+
         v2_out = []
-        for i, s in enumerate(v1_spikes):
-            # convert spike times to rates and threshold to pseudo-spikes
-            rate = len(s) / max(1, video_gray.shape[0] * self.v1.strf.temporal.size / self.v1.fs)
-            if rate > 0.1:
-                v2_out.append(s)
-            else:
-                v2_out.append(np.array([]))
+        for unit in self.units:
+            st = unit.run(v1_mat, T_bins)
+            v2_out.append(st)
         return v2_out
 
 
+# ---------------------------
+# V4: curvature + color pooling (more global; multiplicative combos)
+# ---------------------------
+class V4Unit:
+    """
+    Pools multiple V2 units with learned weights; can detect curvature by combining oriented patches.
+    """
+
+    def __init__(self, presyn_indices, weights, neuron_params=None, syn_params=None):
+        self.presyn = np.array(presyn_indices, dtype=int)
+        self.w = np.array(weights, dtype=float)
+        self.syn = [ShortTermSynapse(**(syn_params or {})) for _ in self.presyn]
+        self.neu = MultiCompartmentNeuron(neuron_params.copy())
+
+        # add receptors (excitatory AMPA+NMDA)
+        self.neu.add_receptor(
+            Receptor(g_max=1.2e-9, E_rev=0.0, tau_rise=0.0008, tau_decay=0.004, location='soma', name='AMPA'))
+        self.neu.add_receptor(
+            Receptor(g_max=0.8e-9, E_rev=0.0, tau_rise=0.004, tau_decay=0.08, location='dend', name='NMDA',
+                     voltage_dependent=True))
+
+    def run(self, presyn_spike_mat, T_bins):
+        # compute multiplicative pairwise features for curvature:
+        # strategy: compute linear drive, plus second-order drive from pairs of presyn inputs
+        linear = np.zeros(T_bins, dtype=float)
+        for k, idx in enumerate(self.presyn):
+            rel = self.syn[k].step(presyn_spike_mat[idx])
+            linear += self.w[k] * rel
+        # second order: take pairwise products for nearby presyn indices (approx curvature)
+        second = np.zeros(T_bins, dtype=float)
+        for a in range(len(self.presyn) - 1):
+            rel_a = self.syn[a].step(presyn_spike_mat[self.presyn[a]])
+            rel_b = self.syn[a + 1].step(presyn_spike_mat[self.presyn[a + 1]])
+            second += 0.5 * (rel_a * rel_b)
+        drive = linear + 0.5 * second
+        syn_rel = np.stack([drive, 0.6 * drive], axis=1)
+        times, Vs = self.neu.step(syn_rel)
+        thr = -30e-3
+        idx = np.where(Vs >= thr)[0]
+        return np.unique(idx) * self.neu.dt
+
+
 class V4:
-    def __init__(self, v2_obj):
+    def __init__(self, v2_obj, n_units=32):
         self.v2 = v2_obj
+        self.n_units = n_units
+        Nv2 = len(self.v2.units) if hasattr(self.v2, 'units') else len(
+            self.v2.process(np.zeros((1, self.v2.v1.H, self.v2.v1.W))))
+        rng = np.random.default_rng(1)
+        self.units = []
+        # each V4 unit pools ~K random V2 units covering object parts (can be made spatially structured)
+        K = min(12, max(4, Nv2 // 8))
+        for _ in range(n_units):
+            pres = rng.choice(range(Nv2), size=K, replace=False).tolist()
+            weights = rng.normal(1.0, 0.2, size=K)
+            unit = V4Unit(pres, weights, neuron_params=self.v2._default_neuron_params(),
+                          syn_params=self.v2._default_syn_params())
+            self.units.append(unit)
 
     def process(self, video_gray):
-        v2_out = self.v2.process(video_gray)
-        # simple pooling across v2 to produce curvature/color sensitive pseudosignals
-        v4_out = []
-        for i, s in enumerate(v2_out):
-            if len(s) > 0:
-                v4_out.append(s)
-            else:
-                v4_out.append(np.array([]))
-        return v4_out
+        v2_spike_lists = self.v2.process(video_gray)
+        T_bins = video_gray.shape[0] - len(self.v2.v1.strf.temporal) + 1
+        dt = 1.0 / self.v2.v1.fs
+        v2_mat = bin_spikes_to_matrix(v2_spike_lists, T_bins, dt)
+        out = []
+        for unit in self.units:
+            out.append(unit.run(v2_mat, T_bins))
+        return out
+
+
+# ---------------------------
+# IT: associative readout using MultiCompNeuron population
+# ---------------------------
+class ITUnit:
+    def __init__(self, presyn_indices, weights, neuron_params=None, syn_params=None):
+        self.presyn = np.array(presyn_indices, dtype=int)
+        self.w = np.array(weights, dtype=float)
+        self.syn = [ShortTermSynapse(**(syn_params or {})) for _ in self.presyn]
+        self.neu = MultiCompartmentNeuron(neuron_params.copy())
+        self.neu.add_receptor(
+            Receptor(g_max=1.5e-9, E_rev=0.0, tau_rise=0.0008, tau_decay=0.004, location='soma', name='AMPA'))
+        self.neu.add_receptor(
+            Receptor(g_max=1.0e-9, E_rev=0.0, tau_rise=0.004, tau_decay=0.08, location='dend', name='NMDA',
+                     voltage_dependent=True))
+
+    def run(self, presyn_mat, T_bins):
+        drive = np.zeros(T_bins, dtype=float)
+        for k, idx in enumerate(self.presyn):
+            rel = self.syn[k].step(presyn_mat[idx])
+            drive += self.w[k] * rel
+        syn_rel = np.stack([drive, 0.6 * drive], axis=1)
+        times, Vs = self.neu.step(syn_rel)
+        thr = -30e-3
+        idx = np.where(Vs >= thr)[0]
+        return np.unique(idx) * self.neu.dt
 
 
 class IT:
     def __init__(self, v4_obj, n_units=32):
         self.v4 = v4_obj
         self.n_units = n_units
-        # simple random projections (placeholder for associative memory)
-        self.proj = [np.random.randn(100) for _ in range(n_units)]
+        Nv4 = len(self.v4.units)
+        rng = np.random.default_rng(2)
+        self.units = []
+        K = min(20, max(6, Nv4 // 4))
+        for _ in range(n_units):
+            pres = rng.choice(range(Nv4), size=K, replace=False).tolist()
+            w = rng.normal(1.0, 0.3, size=K)
+            unit = ITUnit(pres, w, neuron_params=self.v4.v2._default_neuron_params(),
+                          syn_params=self.v4.v2._default_syn_params())
+            self.units.append(unit)
 
     def process(self, video_gray):
-        v4_out = self.v4.process(video_gray)
-        it_out = []
-        for i in range(self.n_units):
-            # simple readout: if any v4 unit spiked, mark IT unit as spiking
-            any_spike = any(len(s) > 0 for s in v4_out)
-            if any_spike:
-                it_out.append(np.array([0.0]))  # single spike at t=0 (placeholder)
-            else:
-                it_out.append(np.array([]))
-        return it_out
+        v4_spike_lists = self.v4.process(video_gray)
+        T_bins = video_gray.shape[0] - len(self.v4.v2.v1.strf.temporal) + 1
+        dt = 1.0 / self.v4.v2.v1.fs
+        v4_mat = bin_spikes_to_matrix(v4_spike_lists, T_bins, dt)
+        out = []
+        for unit in self.units:
+            out.append(unit.run(v4_mat, T_bins))
+        return out
 
 
 # ----------------------------------------
