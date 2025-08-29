@@ -1,8 +1,8 @@
 import numpy as np
 from scipy.signal import fftconvolve
 
-from beads.core.eru.hub.audio.a1_cortex import ConductanceLIFNeuron, SpectroTemporalReceptiveField
-from beads.core.eru.hub.interneuron import ShortTermSynapse
+from beads.core.eru.hub.audio.a1_cortex import SpectroTemporalReceptiveField
+from beads.core.eru.interneuron import ShortTermSynapse
 
 
 class LGNRelay:
