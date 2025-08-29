@@ -1,6 +1,5 @@
 import numpy as np
 from scipy.integrate import solve_ivp
-from beads.core.eru.hub.audio.a1_cortex import ShortTermSynapse
 
 
 # ----------------------------------------------------------------------------
@@ -68,6 +67,7 @@ class Receptor:
         return f"<Receptor {self.name} {vd} loc={self.location} gmax={self.g_max}>"
 
 
+# TODO: Bring in elements from ERU Design
 # ----------------------------------------------------------------------------
 # Two-Compartment Hodgkin-Huxley Neuron with receptors embedded in ODE state
 # ----------------------------------------------------------------------------
@@ -236,26 +236,45 @@ class MultiCompartmentNeuron:
         return np.array(times), np.array(Vs_trace)
 
 
+# TODO: Bring in elements from ERU Design
 # ----------------------------------------------------------------------------
-# Biophysical ERU Hub glue code
+# Tsodyks-Markram dynamic synapse with vectorized exponential updates
 # ----------------------------------------------------------------------------
-class BiophysicalERUHub:
-    def __init__(self, neuron_params, syn_params, receptor_params):
-        self.neuron = MultiCompartmentNeuron(neuron_params)
-        for rec_p in receptor_params:
-            rec = Receptor(**rec_p)
-            self.neuron.add_receptor(rec)
-        self.syn = ShortTermSynapse(**syn_params)
+class ShortTermSynapse:
+    """
+    Tsodyks-Markram model: depression & facilitation with exact updates.
+    """
+
+    def __init__(self, U=0.5, tau_rec=0.8, tau_fac=0.0, dt=0.001):
+        self.U = U
+        self.tau_rec = tau_rec
+        self.tau_fac = tau_fac
+        self.dt = dt
+        # Precompute exponential decay factors
+        self.e_rec = np.exp(-dt / tau_rec)
+        self.e_fac = np.exp(-dt / tau_fac) if tau_fac > 0 else 0.
+        self.R = 1.0
+        self.u = U
 
     def step(self, spike_train):
-        I_syn = self.syn.step(spike_train)  # expected (T, Nrec)
-        times, V = self.neuron.step(I_syn)
-        return times, V
+        # Vectorized pre-allocation
+        T = spike_train.shape[0]
+        I = np.zeros(T, dtype=float)
+        for t in range(T):
+            if spike_train[t]:
+                # Facilitation dynamics (exact)
+                if self.tau_fac > 0:
+                    self.u = self.u * self.e_fac + self.U * (1 - self.e_fac)
+                else:
+                    self.u = self.U
+                # Compute release
+                I[t] = self.u * self.R
+                self.R -= I[t]
+            # Recovery (exact)
+            self.R = 1 - (1 - self.R) * self.e_rec
+        return I
 
 
-# ----------------------------------------------------------------------------
-# Example quick test when run as __main__
-# ----------------------------------------------------------------------------
 if __name__ == "__main__":
     # tiny example: 100 ms simulation, 0.1 ms bins
     dt = 0.1e-3
@@ -287,8 +306,3 @@ if __name__ == "__main__":
     ]
 
     syn_params = {'n_rec': len(receptor_params)}
-
-    hub = BiophysicalERUHub(neuron_params, syn_params, receptor_params)
-    times, Vs = hub.step(spike_train)
-
-    print("Done. First 10 soma voltages (V):", Vs[:10])

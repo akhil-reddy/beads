@@ -1,32 +1,8 @@
 import numpy as np
 from scipy.signal import fftconvolve
 
-from beads.core.eru.hub.audio.a1_cortex import ShortTermSynapse, ConductanceLIFNeuron, SpectroTemporalReceptiveField
-
-
-# ----------------------------------------
-# 1. Retinal & LGN Front-End
-# ----------------------------------------
-class PhotoreceptorArray:
-    def __init__(self, sens_curves):
-        self.sens = sens_curves
-
-    def apply(self, frames):
-        return np.tensordot(frames,
-                            np.stack([self.sens['L'], self.sens['M'], self.sens['S']]),
-                            axes=([3], [0]))
-
-
-class CenterSurroundCell:
-    def __init__(self, size=9, sigma_c=1.0, sigma_s=3.0):
-        xs = np.arange(size) - size // 2
-        xv, yv = np.meshgrid(xs, xs)
-        self.kernel = (np.exp(-(xv ** 2 + yv ** 2) / (2 * sigma_c ** 2)) -
-                       np.exp(-(xv ** 2 + yv ** 2) / (2 * sigma_s ** 2)))
-        self.kernel /= np.sum(np.abs(self.kernel))
-
-    def apply(self, img):
-        return fftconvolve(img, self.kernel, mode='same')
+from beads.core.eru.hub.audio.a1_cortex import ConductanceLIFNeuron, SpectroTemporalReceptiveField
+from beads.core.eru.hub.interneuron import ShortTermSynapse
 
 
 class LGNRelay:
@@ -109,11 +85,9 @@ def build_visual_layer(num_units, neuron_base, syn_base, strf_base=None, interne
 # ----------------------------------------
 # 5. Visual Cortex Full Integration
 # ----------------------------------------
-class VisualCortexERU:
+class VisualCortex:
     def __init__(self, config):
         # front-end
-        self.photoreceptors = PhotoreceptorArray(config['sens_curves'])
-        self.center_surround = CenterSurroundCell()
         self.lgn = LGNRelay()
         # Layer-specific parameters
         self.v1 = build_visual_layer(

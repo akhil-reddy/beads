@@ -1,6 +1,8 @@
 import numpy as np
 from scipy.signal import fftconvolve
 
+from beads.core.eru.hub.interneuron import ShortTermSynapse
+
 
 # ----------------------------------------------------------------------------
 # Spectro-Temporal Receptive Field (STRF) based on ERU/Gabor model enhancements
@@ -45,44 +47,6 @@ class SpectroTemporalReceptiveField:
         conv = fftconvolve(spectrogram, self.strf, mode='valid')
         # Sum over frequency axis to get temporal drive
         return np.sum(conv, axis=0)
-
-# TODO: Bring in elements from ERU Design
-# ----------------------------------------------------------------------------
-# Tsodyks-Markram dynamic synapse with vectorized exponential updates
-# ----------------------------------------------------------------------------
-class ShortTermSynapse:
-    """
-    Tsodyks-Markram model: depression & facilitation with exact updates.
-    """
-
-    def __init__(self, U=0.5, tau_rec=0.8, tau_fac=0.0, dt=0.001):
-        self.U = U
-        self.tau_rec = tau_rec
-        self.tau_fac = tau_fac
-        self.dt = dt
-        # Precompute exponential decay factors
-        self.e_rec = np.exp(-dt / tau_rec)
-        self.e_fac = np.exp(-dt / tau_fac) if tau_fac > 0 else 0.
-        self.R = 1.0
-        self.u = U
-
-    def step(self, spike_train):
-        # Vectorized pre-allocation
-        T = spike_train.shape[0]
-        I = np.zeros(T, dtype=float)
-        for t in range(T):
-            if spike_train[t]:
-                # Facilitation dynamics (exact)
-                if self.tau_fac > 0:
-                    self.u = self.u * self.e_fac + self.U * (1 - self.e_fac)
-                else:
-                    self.u = self.U
-                # Compute release
-                I[t] = self.u * self.R
-                self.R -= I[t]
-            # Recovery (exact)
-            self.R = 1 - (1 - self.R) * self.e_rec
-        return I
 
 
 # TODO: Bring in elements from ERU Design
