@@ -144,7 +144,7 @@ class Cone:
         float: Response magnitude (photoisomerizations per receptor per second).
     """
 
-    def process_pixel(self, R, G, B, wavelength):
+    def function(self, R, G, B, wavelength):
 
         # Convert RGB to luminance (using default calibration assumptions)
         luminance = rgb_to_luminance(R, G, B)
@@ -207,7 +207,7 @@ class Rod:
         float: Averaged response (photoisomerizations per receptor per second).
     """
 
-    def process_pixel(self, R, G, B, wavelength):
+    def function(self, R, G, B, wavelength):
         luminance = rgb_to_luminance(R, G, B)
         photoisom = luminance_to_photoisomerizations(luminance,
                                                      conversion_factor=1.0)
@@ -277,6 +277,20 @@ def create_cones(x, y, hex_size):
     return cells
 
 
+def create_rods(x, y, factor, hex_size):
+    # Outside the fovea: divide the hexagon into 3 equal parallelograms.
+    # For a pointy-topped hexagon of "radius" hex_size, the distance between parallel sides is
+    # hex_size * sqrt(3). One-third of that distance is: hex_size / sqrt(3).
+    # We choose the subdivision direction along 30° (unit vector u = (cos30, sin30)).
+    u_x = math.cos(math.radians(30))  # √3/2
+    u_y = math.sin(math.radians(30))  # 1/2
+    offset_distance = hex_size / math.sqrt(3)
+
+    cx = x + factor * offset_distance * u_x
+    cy = y + factor * offset_distance * u_y
+    return Cell(cx, cy, cell_type="rod", shape="parallelogram")
+
+
 # Ratios are consistent with human eye geometry
 def initialize_photoreceptors(retina, surface_radius=1248.0, cone_threshold=208.0, hex_size=1.0):  # radius in microns
     """
@@ -341,17 +355,7 @@ def initialize_photoreceptors(retina, surface_radius=1248.0, cone_threshold=208.
                     for factor in [-1, 0, 1]:
                         # Only create a rod if a random check passes, with probability based on distance.
                         if random.random() < rod_probability:
-                            # Outside the fovea: divide the hexagon into 3 equal parallelograms.
-                            # For a pointy-topped hexagon of "radius" hex_size, the distance between parallel sides is
-                            # hex_size * sqrt(3). One-third of that distance is: hex_size / sqrt(3).
-                            # We choose the subdivision direction along 30° (unit vector u = (cos30, sin30)).
-                            u_x = math.cos(math.radians(30))  # √3/2
-                            u_y = math.sin(math.radians(30))  # 1/2
-                            offset_distance = hex_size / math.sqrt(3)
-
-                            cx = x + factor * offset_distance * u_x
-                            cy = y + factor * offset_distance * u_y
-                            cells.append(Cell(cx, cy, cell_type="rod", shape="parallelogram"))
+                            cells.append(create_rods(x, y, factor, hex_size))
                         # Create cones near to the fovea as well
                         elif distance < r_peak:
                             cells.append(create_cones(x, y, hex_size))
