@@ -59,7 +59,7 @@ class GenericAmacrine:
 ###############################################################################
 
 class AIIAmacrine:
-    def __init__(self, tau=0.04, V_rest=-65.0, V_threshold=-52.0,
+    def __init__(self, bipolar_cell, tau=0.04, V_rest=-65.0, V_threshold=-52.0,
                  gain=1.2, g_gap_max=1.0, g_inhib_max=0.8, sigmoid_slope=0.4):
         """
         AII amacrine cell model, specialized for scotopic rod signal processing.
@@ -69,6 +69,7 @@ class AIIAmacrine:
           - Inhibit OFF cone bipolar cells via glycinergic synapses (nonlinear, steep threshold).
 
         Parameters:
+            bipolar_cell (object): Bipolar cell object
             tau (float): Membrane time constant (s) (typically ~40 ms).
             V_rest (float): Resting membrane potential (mV).
             V_threshold (float): Threshold potential (mV) for glycinergic release.
@@ -77,6 +78,7 @@ class AIIAmacrine:
             g_inhib_max (float): Maximum inhibitory output for glycinergic transmission.
             sigmoid_slope (float): Slope of the sigmoidal nonlinearity.
         """
+        self.bipolar_cell = bipolar_cell
         self.tau = tau
         self.V_rest = V_rest
         self.V_threshold = V_threshold
@@ -88,7 +90,7 @@ class AIIAmacrine:
         self.V = V_rest
         self.V_history = []
 
-    def update(self, rod_bipolar_input, dt):
+    def function(self, rod_bipolar_input, dt=0.01):
         """
         Update the AII cell's membrane potential based on rod bipolar input.
         dV/dt = ( - (V - V_rest) + gain * rod_bipolar_input ) / tau
@@ -116,25 +118,22 @@ class AIIAmacrine:
         self.V_history = []
 
 
-def initialize_aii_amacrine_cells(retina, **params):
+def initialize_aii_amacrine_cells(rod_bipolar_cells, **params):
     """
     Create an amacrine cell layer associated with each bipolar cell in the retina.
 
     Args:
-        retina (object): Should contain a list retina.rod_bipolar_cells.
+        rod_bipolar_cells (list): Should contain a list of rod_bipolar_cells.
         params: Parameters for the chosen amacrine cell model.
 
     Returns:
-        retina: The retina object with retina.aii_amacrine_cells set.
+        amacrine_cells: A list of AII amacrine cells.
     """
     amacrine_cells = []
-    for bipolar in retina.rod_bipolar_cells:
-        cell = AIIAmacrine(**params)
-        cell.update(bipolar.processed_stimulus, dt=0.01)
+    for bipolar in rod_bipolar_cells:
+        cell = AIIAmacrine(bipolar, **params)
         amacrine_cells.append(cell)
-
-    retina.aii_amacrine_cells = amacrine_cells
-    return retina
+    return amacrine_cells
 
 
 def exponential_decay(distance, lambda_r):
@@ -292,13 +291,10 @@ class StarburstAmacrine:
         self.centrifugal_output = 1.0 / (1.0 + np.exp(-self.nonlin_gain * (mag - self.nonlin_thresh)))
         return self.centrifugal_output
 
-    def update(self, dt=0.01):
+    def function(self):
         """
         Update the SAC's state. Here we compute the contributions, derive the 2D vector,
         and then calculate the centrifugal output.
-
-        Args:
-            dt (float): Time step (for future temporal integration, currently unused).
 
         Returns:
             tuple: (preferred_direction, centrifugal_output, 2D vector)
@@ -314,14 +310,14 @@ class StarburstAmacrine:
 # Initialization Function for Starburst Amacrine Layer (with Radial Grouping)
 ###############################################################################
 
-def initialize_starburst_amacrine_cells(retina, distance_threshold=50.0, min_cluster_size=8,
+def initialize_starburst_amacrine_cells(cone_bipolar_cells, distance_threshold=50.0, min_cluster_size=8,
                                         lambda_r=50.0, nonlin_gain=10.0, nonlin_thresh=0.2, tau=0.05):
     """
     Group cone bipolar cells based on their (x,y) coordinates into clusters (focus areas).
     Create a starburst amacrine cell for each cluster.
 
     Args:
-        retina (object): Retina object with retina.cone_bipolar_cells (each with attributes: x, y, processed_stimulus).
+        cone_bipolar_cells (list): Cone bipolar cells with attributes: x, y, processed_stimulus
         distance_threshold (float): Maximum distance for bipolar cells to be grouped into the same SAC.
         min_cluster_size (int): Minimum number of bipolar cells required for a group.
         lambda_r: Parameters for the SAC model.
@@ -330,13 +326,12 @@ def initialize_starburst_amacrine_cells(retina, distance_threshold=50.0, min_clu
         tau: Parameters for the SAC model.
 
     Returns:
-        retina: Updated retina object with retina.starburst_amacrine_cells.
+       starburst_cells: A list of starburst amacrine cells.
     """
-    clusters = cluster_bipolar_cells(retina.cone_bipolar_cells, distance_threshold, min_cluster_size)
+    clusters = cluster_bipolar_cells(cone_bipolar_cells, distance_threshold, min_cluster_size)
     starburst_cells = []
     for cluster in clusters:
         sac = StarburstAmacrine(cluster, lambda_r=lambda_r, nonlin_gain=nonlin_gain,
                                 nonlin_thresh=nonlin_thresh, tau=tau)
         starburst_cells.append(sac)
-    retina.starburst_amacrine_cells = starburst_cells
-    return retina
+    return starburst_cells

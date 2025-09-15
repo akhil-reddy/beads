@@ -82,18 +82,18 @@ class DSGanglion:
         self.contribution_vector = net_vector
         # Optionally, apply a nonlinear transformation (e.g., scaling).
         self.integrated_signal = self.integration_factor * np.linalg.norm(net_vector)
-        return net_vector
 
-    def update_bipolar_firing(self, max_proj=6.0):  # max_proj is DSGC focus radius in microns
-        """
+    """
+    def update_bipolar_firing_rate(self, max_proj=6.0):  # max_proj is DSGC focus radius in microns
+    
         For each SAC in the DSGC's cluster, iterate over its bipolar cells.
         For each bipolar cell, compute the projection of its relative position (to DSGC center)
         onto the DSGC's integrated 2D vector. If this projection is high, increase the bipolar cell's
-        firing rate (for demonstration, add a proportional increment).
+        firing rate.
 
         This method simulates feedback where the DSGC modulates the firing rate of bipolar cells
         based on alignment with the integrated directional signal.
-        """
+        
         # Ensure DSGC contribution vector is updated.
         self.integrate_SACs()
         # Normalize the DSGC integrated vector (if non-zero).
@@ -117,8 +117,9 @@ class DSGanglion:
                     b.firing_rate = 20.0  # baseline firing rate, in Hz
                 # Increase firing rate proportionally to the normalized projection.
                 b.firing_rate += normalized_projection  # scaling factor can be adjusted
+    """
 
-    def spike(self):
+    def function(self):
         """
         Generate a spike based on the integrated directional signal.
         Uses a simple threshold: if the integrated signal exceeds the threshold, generate a spike.
@@ -126,6 +127,7 @@ class DSGanglion:
         Returns:
             int: 1 if spike generated, 0 otherwise.
         """
+        self.integrate_SACs()
         spike_output = 1 if self.integrated_signal > self.threshold else 0
         self.spikes.append(spike_output)
         return spike_output
@@ -169,12 +171,13 @@ def cluster_SACs_by_proximity(sac_list, sac_group_size=5):
 # DSGC Layer Initialization
 ###############################################################################
 
-def initialize_DSGCs(retina, sac_group_size=5, lambda_ds=100.0, integration_factor=1.0, threshold=0.5):
+def initialize_DSGCs(starburst_amacrine_cells, sac_group_size=5, lambda_ds=100.0,
+                     integration_factor=1.0, threshold=0.5):
     """
     Cluster SACs from the retina into groups of 'sac_group_size' and assign each group to one DSGC.
 
     Args:
-        retina (object): Retina object with retina.starburst_amacrine_cells.
+        starburst_amacrine_cells (list): List of StarburstAmacrine cells (SACs) from the retina.
         sac_group_size (int): Number of SACs per DSGC.
         lambda_ds (float): Spatial decay constant (micrometers) for DSGC integration.
         integration_factor (float): Scaling factor for integration.
@@ -183,17 +186,15 @@ def initialize_DSGCs(retina, sac_group_size=5, lambda_ds=100.0, integration_fact
     Returns:
         retina: Updated retina object with retina.ganglion_cells set.
     """
-    sac_clusters = cluster_SACs_by_proximity(retina.starburst_amacrine_cells, sac_group_size)
+    sac_clusters = cluster_SACs_by_proximity(starburst_amacrine_cells, sac_group_size)
 
     dsgc_list = []
     for cluster in sac_clusters:
         dsgc = DSGanglion(sac_cluster=cluster, lambda_ds=lambda_ds,
                           integration_factor=integration_factor, threshold=threshold)
-        dsgc.integrate_SACs()
         dsgc_list.append(dsgc)
 
-    retina.ganglion_cells = dsgc_list
-    return retina
+    return dsgc_list
 
 
 def exponential_decay(distance, lambda_val):
@@ -241,10 +242,12 @@ class MidgetGanglion:
             weight = exponential_decay(distance, self.lambda_m)
             total += weight * b.processed_stimulus
         self.integrated_signal = self.integration_factor * total
-        return self.integrated_signal
 
-    def spike(self):
-        """Generate a spike if integrated signal exceeds threshold."""
+    def function(self):
+        """
+        Generate a spike if the integrated signal exceeds a threshold.
+        """
+        self.integrate()
         out = 1 if self.integrated_signal > self.threshold else 0
         self.spikes.append(out)
         return out
@@ -334,13 +337,14 @@ class SmallBistratifiedGanglion:
         return out
 
 
-def cluster_bipolar_by_proximity(bipolar_cells, group_size=8):
+def cluster_bipolar_by_proximity(bipolar_cells, group_size=8, channel_type=None):
     """
     Cluster bipolar cells into groups of up to 'group_size' based on spatial proximity.
 
     Args:
         bipolar_cells (list): List of bipolar cell objects, each with .x and .y attributes.
         group_size (int): Desired maximum number of cells per cluster.
+        channel_type: the particular channel type to cluster by proximity.
 
     Returns:
         List[List[bipolar_cell]]: A list of clusters.
@@ -368,33 +372,27 @@ def cluster_bipolar_by_proximity(bipolar_cells, group_size=8):
     return clusters
 
 
-###############################################################################
-# Example Initialization Functions for Each Ganglion Cell Type
-###############################################################################
-
-def initialize_midget_cells(retina, group_size=8, lambda_m=30.0, integration_factor=1.0, threshold=0.3):
+def initialize_midget_cells(cone_bipolar_cells, group_size=8, lambda_m=30.0, integration_factor=1.0, threshold=0.3):
     """
-    Cluster midget bipolar cells into groups and create Midget Ganglion Cells.
+    Cluster r-g cone bipolar cells into groups and create Midget Ganglion Cells.
     """
     # Group midget bipolar cells.
-    clusters = cluster_bipolar_by_proximity(retina.bipolar_cells, group_size)
+    clusters = cluster_bipolar_by_proximity(cone_bipolar_cells, group_size)
     midget_cells = []
     for cluster in clusters:
         if len(cluster) == 0:
             continue
         mg = MidgetGanglion(cluster, lambda_m=lambda_m, integration_factor=integration_factor, threshold=threshold)
-        mg.integrate()
         midget_cells.append(mg)
-    retina.midget_ganglion_cells = midget_cells
-    return retina
+    return midget_cells
 
 
-def initialize_parasol_cells(retina, group_size=8, lambda_p=80.0, integration_factor=1.0, threshold=0.4):
+def initialize_parasol_cells(cone_bipolar_cells, group_size=8, lambda_p=80.0, integration_factor=1.0, threshold=0.4):
     """
     Cluster diffuse bipolar cells into groups and create Parasol Ganglion Cells.
     """
     # Group diffuse bipolar cells.
-    clusters = cluster_bipolar_by_proximity(retina.bipolar_cells, group_size)
+    clusters = cluster_bipolar_by_proximity(cone_bipolar_cells, group_size)
     parasol_cells = []
     for cluster in clusters:
         if len(cluster) == 0:
@@ -402,23 +400,20 @@ def initialize_parasol_cells(retina, group_size=8, lambda_p=80.0, integration_fa
         pg = ParasolGanglion(cluster, lambda_p=lambda_p, integration_factor=integration_factor, threshold=threshold)
         pg.integrate()
         parasol_cells.append(pg)
-    retina.parasol_ganglion_cells = parasol_cells
-    return retina
+    return parasol_cells
 
 
-def initialize_small_bistratified_cells(retina, group_size=6, lambda_sb=60.0, integration_factor=1.0, threshold=0.3):
+def initialize_small_bistratified_cells(cone_bipolar_cells, group_size=6, lambda_sb=60.0, integration_factor=1.0, threshold=0.3):
     """
-    Cluster S-cone bipolar cells and diffuse bipolar cells into groups and create Small Bistratified Ganglion Cells.
+    Cluster b-y cone bipolar cells into groups and create Small Bistratified Ganglion Cells.
     """
     # Group S bipolar cells
-    clusters = cluster_bipolar_by_proximity(retina.bipolar_cells, group_size)
+    clusters = cluster_bipolar_by_proximity(cone_bipolar_cells, group_size)
     small_bistratified_ganglion_cells = []
     for cluster in clusters:
         if len(cluster) == 0:
             continue
         sbg = SmallBistratifiedGanglion(cluster, lambda_sb=lambda_sb,
                                         integration_factor=integration_factor, threshold=threshold)
-        sbg.integrate()
         small_bistratified_ganglion_cells.append(sbg)
-    retina.small_bistratified_ganglion_cells = small_bistratified_ganglion_cells
-    return retina
+    return small_bistratified_ganglion_cells

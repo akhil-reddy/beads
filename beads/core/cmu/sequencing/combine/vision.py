@@ -127,6 +127,13 @@ class Horizontal:
         inhibited_stimulus = np.maximum(inhibited_stimulus, 0)
         return inhibited_stimulus
 
+    def set_stimulus(self, input_stimulus):
+        self.stimulus = input_stimulus
+
+    def function(self):
+        self.center_calculate()
+        return self.surround_inhibit()
+
 
 def get_opponent_channels(L, M, S):
     # Calculate opponent channels
@@ -136,23 +143,23 @@ def get_opponent_channels(L, M, S):
     return rg, by, lum
 
 
-def initialize_horizontal_cells(retina, inhibition_radius=10.0):
+def initialize_horizontal_cells(photoreceptor_cells, inhibition_radius=10.0):
     """
     Creates horizontal cells from the existing photoreceptors (the “drops”).
     Each photoreceptor cell is assigned a horizontal cell with a default stimulus.
     In a complete implementation, the stimulus would be derived from the RGB-transformed input.
 
     Args:
-        retina (object): The retina object, which already has a list of photoreceptor cells.
+        photoreceptor_cells (list): A list of photoreceptor cells.
         inhibition_radius (float): The radius within which horizontal cells are linked.
 
     Returns:
-        retina: The retina object updated with horizontal cells.
+        cells: The horizontal cells
     """
     horizontal_cells = []
-    for cell in retina.photoreceptor_cells:
+    for cell in photoreceptor_cells:
         if cell.cell_type == "cone":
-            # In a full run, cell would already have a stimulus attribute.
+            # In a full run, 'cell' would already have a stimulus attribute.
             # Here we initialize with a default (e.g., zero stimulus for [R,G,B]).
             default_stimulus = np.array([0.0, 0.0, 0.0])
             horizontal_cells.append(Horizontal(cell.x, cell.y, default_stimulus))
@@ -162,8 +169,7 @@ def initialize_horizontal_cells(retina, inhibition_radius=10.0):
         h_cell.link(horizontal_cells, radius=inhibition_radius)
 
     # Attach the horizontal cell layer to the retina.
-    retina.init_horizontal_cells(horizontal_cells)
-    return retina
+    return horizontal_cells
 
 
 """
@@ -197,7 +203,7 @@ class Bipolar:
         self.V = 0.0  # Membrane potential (or output) at the current time
         self.output_history = []  # To store the temporal evolution of responses
 
-    def update(self, input_signal, dt):
+    def update(self, input_signal, dt=0.1):
         """
         Update the bipolar cell's membrane potential given a graded input signal.
         This function simulates a leaky integrator (RC circuit) to reflect the temporal dynamics of bipolar cells.
@@ -206,9 +212,6 @@ class Bipolar:
             input_signal (float or np.ndarray): The instantaneous graded input (normalized, e.g. 0 to 1) f
             rom photoreceptor/horizontal cell processing.
             dt (float): The time step (in seconds) for numerical integration.
-
-        Returns:
-            float: The updated (non-linear) output of the cell.
         """
         # For ON bipolar cells, the reduction in photoreceptor glutamate (i.e., a lower input)
         # produces excitation. For OFF bipolar cells, an increase in input is excitatory.
@@ -234,57 +237,68 @@ class Bipolar:
         self.V = np.clip(self.V, 0, self.saturation)
 
         self.output_history.append(self.V)
-        return self.V
 
     def get_output(self):
         """Return the current output (membrane potential) of the bipolar cell."""
         return self.V
 
+    def function(self, input_stimulus):
+        self.update(input_stimulus)
+        return self.get_output()
 
-def initialize_rod_bipolar_cells(retina):
+
+def initialize_rod_bipolar_cells(photoreceptor_cells):
     """
     Given a retina object that contains a list of rod photoreceptor cells, create an ON bipolar cell layer.
 
     Args:
-        retina: An object that has an attribute `photoreceptor_cells`, a list of photoreceptor cell objects.
+        photoreceptor_cells: A list of photoreceptor cell objects.
 
     Returns:
-        retina: The retina object updated with rod bipolar cells stored in `retina.rod_bipolar_cells`.
+        rod_bipolar_cells: The rod bipolar cells
     """
-    bipolar_cells = []
+    rod_bipolar_cells = []
 
-    for cell in retina.photoreceptor_cells:
+    for cell in photoreceptor_cells:
         if cell.cell_type == "rod":
             # Create an ON bipolar cell with typical parameter values
             bipolar = Bipolar(cell.x, cell.y, cell_type='ON', threshold=0.5, tau=0.07, gain=3.0, saturation=1.0)
-            bipolar_cells.append(bipolar)
+            rod_bipolar_cells.append(bipolar)
 
-    retina.rod_bipolar_cells = bipolar_cells
-    return retina
+    return rod_bipolar_cells
 
 
-def initialize_cone_bipolar_cells(retina):
+def initialize_cone_bipolar_cells(horizontal_cells, aii_amacrine_cells):
     """
     Given a retina object that contains a list of horizontal cells with already computed inhibitory responses,
     create a bipolar cell layer.
 
     Args:
-        retina: An object that has an attribute `horizontal_cells`, a list of horizontal cell objects,
-                each with a computed attribute `inhibited_stimulus` (range normalized to [0, 1]).
+        horizontal_cells: A list of horizontal cell objects, each with a computed attribute `inhibited_stimulus`
+        (range normalized to [0, 1]).
+        aii_amacrine_cells: A list of AII amacrine cells.
 
     Returns:
-        retina: The retina object updated with cone bipolar cells stored in `retina.cone_bipolar_cells`.
+        cone_bipolar_cells: The cone bipolar cells
     """
-    bipolar_cells = []
+    cone_bipolar_cells = []
 
-    for h_cell in retina.horizontal_cells:
+    for h_cell in horizontal_cells:
         # Create an ON bipolar cell with typical parameter values
         bipolar = Bipolar(h_cell.x, h_cell.y, cell_type='ON', threshold=0.5, tau=0.07, gain=3.0, saturation=1.0)
-        bipolar_cells.append(bipolar)
+        cone_bipolar_cells.append(bipolar)
 
         # Create an OFF bipolar cell with typical parameter values
         bipolar = Bipolar(h_cell.x, h_cell.y, cell_type='OFF', threshold=0.5, tau=0.07, gain=3.0, saturation=1.0)
-        bipolar_cells.append(bipolar)
+        cone_bipolar_cells.append(bipolar)
 
-    retina.cone_bipolar_cells = bipolar_cells
-    return retina
+    for cell in aii_amacrine_cells:
+        # Create an ON bipolar cell for AII amacrine
+        bipolar = Bipolar(cell.x, cell.y, cell_type='ON', threshold=0.5, tau=0.07, gain=3.0, saturation=1.0)
+        cone_bipolar_cells.append(bipolar)
+
+        # Create an OFF bipolar cell with typical parameter values
+        bipolar = Bipolar(cell.x, cell.y, cell_type='OFF', threshold=0.5, tau=0.07, gain=3.0, saturation=1.0)
+        cone_bipolar_cells.append(bipolar)
+
+    return cone_bipolar_cells

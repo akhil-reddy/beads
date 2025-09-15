@@ -9,14 +9,13 @@ import numpy as np
 
 
 # -- Govardovskii nomogram functions ------------------------------------------
-def govardovskii_nomogram(wavelength, lambda_max):
+def govardovskii_nomogram(wavelength):
     """
     Calculates the relative spectral sensitivity using a Govardovskii nomogram template.
     (This is a simplified version.)
 
     Args:
         wavelength (numpy.ndarray or float): Wavelength(s) in nanometers.
-        lambda_max (float): The peak absorbance wavelength (nm) for the pigment.
 
     Returns:
          numpy.ndarray or float: Relative sensitivity.
@@ -40,10 +39,10 @@ def spectral_sensitivity(wavelength, lambda_max):
     """
     # This simple approach scales the input wavelength so that when lambda_max==500 nm, no shift occurs.
     effective_wavelength = wavelength * (500.0 / lambda_max)
-    return govardovskii_nomogram(effective_wavelength, lambda_max)
+    return govardovskii_nomogram(effective_wavelength)
 
 
-# -- HSP Brightness (from alienryderflex.com) -------------------------------
+# -- HSP Brightness -------------------------------
 def hsp_brightness(R, G, B):
     """
     Calculate perceived brightness using the HSP model.
@@ -148,9 +147,9 @@ class Cone:
 
         # Convert RGB to luminance (using default calibration assumptions)
         luminance = rgb_to_luminance(R, G, B)
-        # Estimate photoisomerizations (using default conversion factor for cones)
+        # Estimate photoisomerizations (using a default conversion factor for cones)
         photoisom = luminance_to_photoisomerizations(luminance, conversion_factor=100.0)
-        # Apply cone threshold: if below threshold, response is 0.
+        # Apply a cone threshold: if below a threshold, the response is 0.
         if photoisom < self.threshold:
             return 0.0
         # Weight by spectral sensitivity using the Govardovskii nomogram.
@@ -292,7 +291,7 @@ def create_rods(x, y, factor, hex_size):
 
 
 # Ratios are consistent with human eye geometry
-def initialize_photoreceptors(retina, surface_radius=1248.0, cone_threshold=208.0, hex_size=1.0):  # radius in microns
+def initialize_photoreceptors(surface_radius=1248.0, cone_threshold=208.0, hex_size=1.0):  # radius in microns
     """
     Initializes photoreceptor part of the retina by distributing rods and cones on a circular (radial) manifold.
 
@@ -303,13 +302,12 @@ def initialize_photoreceptors(retina, surface_radius=1248.0, cone_threshold=208.
     probability distribution.
 
     Parameters:
-        retina (object): the umbrella object holding the retina instance
         surface_radius (float): Radius of the circular area.
         cone_threshold (float): Distance threshold for subdivision.
         hex_size (float): The "radius" of each hexagon (distance from center to a vertex).
 
     Returns:
-        Retina: An instance containing the generated cells.
+        cells: The photoreceptor cells
     """
     cells = []
     # For pointy-topped hexagons:
@@ -360,5 +358,4 @@ def initialize_photoreceptors(retina, surface_radius=1248.0, cone_threshold=208.
                         elif distance < r_peak:
                             cells.append(create_cones(x, y, hex_size))
 
-    retina.init_photoreceptors(cells, surface_radius, cone_threshold)
-    return retina
+    return cells
