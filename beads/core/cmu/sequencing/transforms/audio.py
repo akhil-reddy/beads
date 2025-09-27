@@ -29,7 +29,7 @@ class InnerHairCell:
         disp = self.seg.displacement
         return self.g_met * np.tanh(disp / 1e-9)
 
-    def update(self, dt):
+    def function(self, dt):
         # 1) Update membrane potential via RC: dV = (-(V - V_rest) + I_MET*R_input)/tau
         I_met = self.met_current()
         # convert current to equivalent voltage drive (choose R_input to scale)
@@ -66,7 +66,7 @@ class RibbonSynapse:
         self.y = y
         self.M = R + I  # max pool size
 
-    def update(self, dt, k):
+    def function(self, dt, k):
         # 1) Stochastic release: Binomial draw
         p_rel = min(k * dt, 1.0)
         n_rel = np.random.binomial(int(self.R), p_rel)

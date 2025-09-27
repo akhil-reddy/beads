@@ -25,7 +25,7 @@ class BasilarMembrane:
             p = pressure_map.get(seg.cf, 0.0)
             seg.force += p * seg.width
 
-    def step(self, dt):
+    def function(self, dt):
         for seg in self.segments:
             acc = (seg.force - seg.stiffness * seg.displacement) / seg.mass
             seg.velocity += acc * dt
@@ -66,7 +66,7 @@ class OuterHairCell:
         dz = (frac * 2 - 1) * self.z_max  # length change ±z_max
         return self.seg.stiffness * dz
 
-    def step(self, dt, synaptic_input):
+    def function(self, dt, synaptic_input):
         # synaptic_input: current injection (A) from mechano‑transducer
         Cm = 10e-12  # membrane capacitance (F)
         # simple RC update Vm
@@ -84,7 +84,7 @@ class MedialOlivocochlear:
     def __init__(self, ohcs):
         self.ohcs = ohcs
 
-    def stimulate(self, rate):
+    def function(self, rate):
         # rate: 0–100% release → sets efferent level on each OHC
         for ohc in self.ohcs:
             ohc.eff = np.clip(rate, 0.0, 1.0)

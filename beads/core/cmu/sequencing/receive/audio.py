@@ -28,7 +28,7 @@ class Pinna:
         b *= 10 ** (gain_db / 20)
         return b, a
 
-    def process(self, x):
+    def function(self, x):
         y = x
         for b, a in self.notches:
             y = lfilter(b, a, y)
@@ -44,11 +44,12 @@ class EarCanal:
 
     def __init__(self, fs, length_m=0.025, gain_db=15):
         self.fs = fs
+
         c = 343.0
         f0 = c / (4 * length_m)
         bw = f0 / 3
         low, high = f0 - bw / 2, f0 + bw / 2
-        b, a = butter(2, [low / (fs / 2), high / (fs / 2)], btype='bandpass', fs=self.fs, output='ba')
+        b, a = butter(2, [low / (fs / 2), high / (self.fs / 2)], btype='bandpass', fs=self.fs, output='ba')
         b *= 10 ** (gain_db / 20)
         self.b, self.a = b, a
 
@@ -65,10 +66,9 @@ class OuterEar:
         self.pinna = Pinna(fs, notch_freqs, notch_depths, peak_freqs, peak_gains)
         self.canal = EarCanal(fs)
 
-    def process(self, x):
+    def function(self, x):
         return self.canal.process(self.pinna.process(x))
 
 
-def initialize_outer_ear(model, fs):
-    model.outer_ear = OuterEar(fs)
-    return model.outer_ear
+def initialize_outer_ear(fs):
+    return OuterEar(fs)
