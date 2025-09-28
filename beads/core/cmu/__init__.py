@@ -14,9 +14,6 @@ class Retina:
     """
 
     def __init__(self):
-        self.surface_radius = None
-        self.cone_threshold = None
-
         self.photoreceptor_cells = None
 
         self.horizontal_cells = None
@@ -35,10 +32,7 @@ class Retina:
     """
     Function initializes the photoreceptors and organizes them.
     """
-    def init_photoreceptors(self, surface_radius, cone_threshold):
-        self.surface_radius = surface_radius
-        self.cone_threshold = cone_threshold
-
+    def init_photoreceptors(self):
         self.photoreceptor_cells = initialize_photoreceptors()
 
     """
