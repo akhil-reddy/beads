@@ -249,7 +249,6 @@ def run(waveform, fs, bm: BasilarMembrane, ohcs: list, moc: MedialOlivocochlear,
     seg_areas = np.array([seg.width * duct_depth for seg in bm.segments])  # (n_segments,)
 
     # step through time bins
-    spikes_ihc = []  # placeholder if you want to collect AN spikes
     for step in range(n_steps):
         i0 = step * samples_per_dt
         i1 = i0 + samples_per_dt
