@@ -53,7 +53,7 @@ class EarCanal:
         b *= 10 ** (gain_db / 20)
         self.b, self.a = b, a
 
-    def process(self, x):
+    def function(self, x):
         return lfilter(self.b, self.a, x)
 
 
@@ -67,7 +67,7 @@ class OuterEar:
         self.canal = EarCanal(fs)
 
     def function(self, x):
-        return self.canal.process(self.pinna.process(x))
+        return self.canal.function(self.pinna.function(x))
 
 
 def initialize_outer_ear(fs):
