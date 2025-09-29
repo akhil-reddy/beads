@@ -106,5 +106,39 @@ class OuterEar:
         self.pinna = Pinna(fs, notch_freqs, notch_depths, peak_freqs, peak_gains, Q=8, realtime=realtime)
         self.canal = EarCanal(fs, length_m=0.025, gain_db=12.0, Q=4.0, realtime=realtime)
 
-    def function(self, x):
-        return self.canal.function(self.pinna.function(x))
+    def function(self, x, input_is_pa=False, ref_db=94.0, dtype=np.float32):
+        """
+        Process waveform through outer-ear chain and return pressure (Pa).
+
+        Args:
+            x: 1D numpy array, digital waveform. If input_is_pa==True then `x` is already in Pascals.
+            input_is_pa: bool, whether `x` is already in Pa.
+            ref_db: float, dB SPL value that maps digital amplitude 1.0 -> ref_db SPL. (default 94 dB -> 1 Pa)
+            dtype: output dtype for the pressure array (float32 recommended).
+
+        Returns:
+            pressure: numpy array (same length as x) in Pascals (dtype dtype).
+        """
+        x = np.asarray(x)
+        if x.ndim != 1:
+            raise ValueError("expected 1D waveform (mono).")
+
+        # Filter as double precision for numeric stability
+        x64 = x.astype(np.float64)
+
+        # apply pinna + canal (these functions should also be stable in float64)
+        y64 = self.canal.function(self.pinna.function(x64))
+
+        # if caller already gave us Pa, return directly (no scaling)
+        if input_is_pa:
+            return y64.astype(dtype)
+
+        # map digital full-scale 1.0 -> ref_db SPL -> ref_pa (Pa)
+        # ref_pa = 20 µPa * 10^(ref_db/20)
+        ref_pa = 20e-6 * (10.0 ** (ref_db / 20.0))
+
+        # scale waveform to Pa. This assumes your digital amplitude 1.0 corresponds to ref_db SPL
+        pressure = (y64 * ref_pa).astype(dtype)
+
+        return pressure
+
