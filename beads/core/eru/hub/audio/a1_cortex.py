@@ -59,7 +59,7 @@ class PrimaryAuditoryCortex:
                 neu.add_receptor(rec)
             self.units.append({'strf': strf, 'syn': syn, 'neu': neu})
 
-    def run(self, spectrogram):
+    def function(self, spectrogram):
         """
         spectrogram: shape (num_freqs, T)
         returns dict {unit_idx: spike_time_array (s)}

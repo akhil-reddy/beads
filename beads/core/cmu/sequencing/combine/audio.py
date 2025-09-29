@@ -189,8 +189,6 @@ class MedialOlivocochlear:
             ohc.eff = np.clip(rate, 0.0, 1.0)
 
 
-# if you have an implementation for gammatone use it; otherwise use bandpass sos per band
-
 def make_gammatone_bank(cfs, fs, bw_frac=1.0):
     """
     Returns second-order-sections bandpass filters approximating gammatone bands.
@@ -219,9 +217,7 @@ def bank_filter(s, sos_list):
     return np.stack(outs, axis=0)  # shape (n_bands, T)
 
 
-# --- glue code to step waveform through BM & OHC ---
-def run_cochlea_pipeline(waveform, fs, bm: BasilarMembrane, ohcs: list, moc: MedialOlivocochlear,
-                         chunk_dt=1.0 / 40000.0):
+def run(waveform, fs, bm: BasilarMembrane, ohcs: list, moc: MedialOlivocochlear, chunk_dt=1.0 / 40000.0):
     """
     waveform: 1D numpy array (sound pressure in Pa at ear canal sampling rate = fs)
     fs: sample rate of waveform (Hz)

@@ -30,7 +30,7 @@ class CochlearNucleusCell:
         self.noise_std = noise_std
         self.refrac_time = 0.0
 
-    def step(self, I_syn):
+    def function(self, I_syn):
         """
         Advance membrane potential by dt given synaptic input current I_syn (A).
         Returns True on spike.
@@ -87,7 +87,7 @@ class MSOUnit:
         self.fs = fs
         self.threshold = threshold
 
-    def process(self, spikes_left, spikes_right, duration):
+    def function(self, spikes_left, spikes_right, duration):
         """
         spikes_left, spikes_right: arrays of spike times (s)
         duration: simulation length (s)
@@ -118,7 +118,7 @@ class LSOUnit:
         self.fs = fs
         self.threshold = threshold
 
-    def process(self, exc_spikes, inh_spikes, duration):
+    def function(self, exc_spikes, inh_spikes, duration):
         """
         exc_spikes: array of excitatory spike times (s)
         inh_spikes: array of inhibitory spike times (s)
@@ -169,7 +169,7 @@ class EarlyBrainstem:
         self.efferent_gain = 1.0 + 0.1 * np.tanh(1.0 / (1 + spatial_strength))
         return self.efferent_gain
 
-    def run(self, anf_spike_train_left, anf_spike_train_right, duration):
+    def function(self, anf_spike_train_left, anf_spike_train_right, duration):
         """
         anf_spike_train_left: list of lists per channel of AN spike arrays from left ear.
         anf_spike_train_right: list of lists per channel of AN spike arrays from right ear.

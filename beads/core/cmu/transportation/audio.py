@@ -65,7 +65,7 @@ class AuditoryNerveFiber:
         return np.array(spikes)
 
 
-def generate_anf_spike_trains(vesicle_releases, fs, fiber_params=None,
+def run(vesicle_releases, fs, fiber_params=None,
                                  num_fibers=10, param_jitter=0.1):
     """
     Convert each channel’s vesicle release count into spike trains for a *population*
