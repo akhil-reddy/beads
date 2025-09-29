@@ -254,20 +254,16 @@ def run(waveform, fs, bm: BasilarMembrane, ohcs: list, moc: MedialOlivocochlear,
         i1 = i0 + samples_per_dt
         # average band output over bin -> approximate pressure per band (Pa)
         p_seg = band_outputs[:, i0:i1].mean(axis=1)  # (n_segments,)
-        # convert to force on each BM segment: F = p * area
-        F_seg = p_seg * seg_areas
-        # apply vectorized pressure: modify BasilarMembrane.apply_pressure to accept array-like
-        # if current apply_pressure expects dict, you can instead do:
+
         pressure_map = {cf: float(p) for cf, p in zip(seg_cfs, p_seg)}
         bm.apply_pressure(pressure_map)  # adds F via seg.force += p*width in your code
-        # Better: modify apply_pressure to accept p_seg and set seg.force += F_seg
 
         # advance BM dynamics by dt
         bm.function(dt)
 
         # compute MET input for OHCs (simple conversion: BM displacement -> deflection -> current)
         # For simplicity: I_met = g_max * sigmoid( k * displacement )
-        # choose parameters:
+
         g_max = 200e-12  # 200 pA max current (tune)
         k = 1e5  # slope converting meters->unitless (tune)
         x0 = 0.0
@@ -280,8 +276,5 @@ def run(waveform, fs, bm: BasilarMembrane, ohcs: list, moc: MedialOlivocochlear,
         for j, ohc in enumerate(ohcs):
             syn_current = I_met[j]
             ohc.function(dt, syn_current)
-
-        # (optional) collect IHC → auditory nerve here (not implemented)
-        # e.g., ihc_vm = ihc.compute_vm(disps[j]); spike = ihc_synapse.step(ihc_vm) -> AN spike times
 
     # end loop
