@@ -97,7 +97,7 @@ class Cochlea:
     Function initializes the outer ear with pinna and ear canal.
     """
     def init_outer_ear(self):
-        self.outer_ear = initialize_outer_ear(self.fs)
+        self.outer_ear = OuterEar(self.fs)
 
     """
     Function initializes the OHC cells and organizes them.
@@ -118,7 +118,7 @@ class Cochlea:
     Function initializes the auditory nerve fiber.
     """
     def init_anf(self, vesicle_releases):
-        self.anf_spike_trains = generate_anf_spike_trains(vesicle_releases, self.fs)
+        self.anf_spike_trains = run(vesicle_releases, self.fs)
 
 # TODO: Add classes for cortices
 
