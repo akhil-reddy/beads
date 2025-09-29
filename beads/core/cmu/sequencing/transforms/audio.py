@@ -91,10 +91,11 @@ class RibbonSynapse:
 
 '''
 # For each BM segment:
+
 ihc = InnerHairCell(seg)
 ribbon = RibbonSynapse()
-# In simulation loop:
-# k = ihc.update(dt)
-# ves = ribbon.update(dt, k)
+k = ihc.function(dt)
+ves = ribbon.function(dt, k)
+
 # ves drives downstream spike generator
 '''
