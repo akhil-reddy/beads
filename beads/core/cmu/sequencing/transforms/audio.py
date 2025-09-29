@@ -73,7 +73,7 @@ class RibbonSynapse:
         self.R -= n_rel
         self.C += n_rel
 
-        # 2) Deterministic pool flows
+        # 2) Deterministic differential equation pool flows
         dR = (self.x * self.I + self.y * (self.M - self.R)) * dt
         dC = - (self.l + self.r) * self.C * dt
         dI = (self.r * self.C - self.x * self.I) * dt
