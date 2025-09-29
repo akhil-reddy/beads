@@ -191,7 +191,7 @@ class EarlyBrainstem:
                 cell = cells[ch_idx]
                 out_times = []
                 for i, I in enumerate(cmd):
-                    if cell.step(I):
+                    if cell.function(I):
                         out_times.append(i / self.fs)
                 cn_left[ctype].append(np.array(out_times))
 
@@ -207,15 +207,15 @@ class EarlyBrainstem:
                 cell = cells[ch_idx]
                 out_times = []
                 for i, I in enumerate(cmd):
-                    if cell.step(I):
+                    if cell.function(I):
                         out_times.append(i / self.fs)
                 cn_right[ctype].append(np.array(out_times))
 
         # Binaural processing on bushy outputs of first two channels
         left = np.sort(np.hstack(cn_left['bushy']))
         right = np.sort(np.hstack(cn_right['bushy']))
-        mso_spikes = self.mso.process(left, right, duration)
-        lso_spikes = self.lso.process(left, right, duration)
+        mso_spikes = self.mso.function(left, right, duration)
+        lso_spikes = self.lso.function(left, right, duration)
         # Update efferent gain
         new_gain = self.efferent_feedback(mso_spikes, lso_spikes)
         return {
