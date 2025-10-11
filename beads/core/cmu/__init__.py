@@ -32,42 +32,49 @@ class Retina:
     """
     Function initializes the photoreceptors and organizes them.
     """
+
     def init_photoreceptors(self):
         self.photoreceptor_cells = initialize_photoreceptors()
 
     """
     Function initializes the horizontal cells and organizes them.
     """
+
     def init_horizontal_cells(self):
         self.horizontal_cells = initialize_horizontal_cells(self.photoreceptor_cells)
 
     """
     Function initializes the rod bipolar cells and organizes them.
     """
+
     def init_rod_bipolar_cells(self):
         self.rod_bipolar_cells = initialize_rod_bipolar_cells(self.photoreceptor_cells)
 
     """
     Function initializes the AII amacrine cells and organizes them.
     """
+
     def init_aii_amacrine_cells(self):
         self.aii_amacrine_cells = initialize_aii_amacrine_cells(self.rod_bipolar_cells)
 
     """
     Function initializes the cone bipolar cells and organizes them.
     """
+
     def init_cone_bipolar_cells(self):
         self.cone_bipolar_cells = initialize_cone_bipolar_cells(self.horizontal_cells, self.aii_amacrine_cells)
 
     """
     Function initializes the star amacrine cells and organizes them.
     """
+
     def init_star_amacrine_cells(self):
         self.star_amacrine_cells = initialize_starburst_amacrine_cells(self.cone_bipolar_cells)
 
     """
     Function initializes the ganglion cells and organizes them.
     """
+
     def init_ganglion_cells(self):
         self.dsgc = initialize_DSGCs(self.star_amacrine_cells)
         self.midget_ganglion_cells = initialize_midget_cells(self.cone_bipolar_cells)
@@ -79,6 +86,7 @@ class Cochlea:
     """
         Represents a digital cochlea based on a sampling rate (fs) and signal.
     """
+
     def __init__(self, fs):
         self.fs = fs
 
@@ -96,12 +104,14 @@ class Cochlea:
     """
     Function initializes the outer ear with pinna and ear canal.
     """
+
     def init_outer_ear(self):
         self.outer_ear = OuterEar(self.fs)
 
     """
     Function initializes the OHC cells and organizes them.
     """
+
     def init_ohc_cells(self, segs):
         self.basilar_membrane = BasilarMembrane()
         self.ohc_cells = [OuterHairCell(seg) for seg in segs]
@@ -110,6 +120,7 @@ class Cochlea:
     """
     Function initializes the IHC cells and organizes them.
     """
+
     def init_ihc_cells(self, segs):
         self.ihc_cells = [InnerHairCell(seg) for seg in segs]
         self.ribbon_synapse = RibbonSynapse()
@@ -117,8 +128,17 @@ class Cochlea:
     """
     Function initializes the auditory nerve fiber.
     """
+
     def init_anf(self, vesicle_releases):
         self.anf_spike_trains = run(vesicle_releases, self.fs)
 
-# TODO: Add classes for cortices
 
+# TODO: Add classes for cortices
+class VisualCortex:
+    def __init__(self):
+        pass
+
+
+class AuditoryCortex:
+    def __init__(self):
+        pass
