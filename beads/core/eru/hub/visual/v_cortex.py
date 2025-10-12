@@ -39,14 +39,14 @@ class VisualSTRF:
         tmp = gauss * carrier
         self.temporal = tmp / (np.linalg.norm(tmp) + 1e-12)
 
-    def apply(self, video_gray):
-        # video_gray: (T, H, W)
-        T, H, W = video_gray.shape
+    def function(self, channels):
+        # channels: (T, H, W)
+        T, H, W = channels.shape
         F = self.F
         spat_maps = np.zeros((T, F, H, W))
         for t in range(T):
             for f in range(F):
-                spat_maps[t, f] = convolve2d(video_gray[t], self.bank[f], mode='same', boundary='symm')
+                spat_maps[t, f] = convolve2d(channels[t], self.bank[f], mode='same', boundary='symm')
         Tt = len(self.temporal)
         T_out = T - Tt + 1
         out = np.zeros((T_out, F, H, W))
@@ -130,13 +130,13 @@ class LGN:
             return self.burst_gain_scalar
         return 1.0
 
-    def apply(self, frames):
+    def function(self, channels):
         """
         frames: (T, H, W) luminance
         returns dict with M_out (T',H,W), P_out (T',H,W), burst_factor (scalar)
         """
-        T, H, W = frames.shape
-        cs = np.stack([self.center_surround(frames[t]) for t in range(T)])  # (T,H,W)
+        T, H, W = channels.shape
+        cs = np.stack([self.center_surround(channels[t]) for t in range(T)])  # (T,H,W)
         self._update_history(cs)
         burst_gain = self.compute_burst_mask()
         Tm = len(self.kernel_M)
@@ -186,9 +186,9 @@ class L4Unit:
         drive = np.maximum(patch.reshape(T, -1).mean(axis=1), 0.0)
         return drive
 
-    def step(self, feature_maps, burst_gain=1.0, modulation=1.0):
+    def function(self, channels, burst_gain=1.0, modulation=1.0):
         # modulation is L5/6 feedback multiplicative factor (affects firing gain)
-        drive = self.receptive_drive(feature_maps)  # (T,)
+        drive = self.receptive_drive(channels)  # (T,)
         # firing rate scaling -> prob per frame
         lam = (drive / (np.max(drive) + 1e-12)) * self.amp * modulation * burst_gain
         p = 1.0 - np.exp(-lam * self.neu.dt)
@@ -220,10 +220,10 @@ class L23Unit:
         self.v1 = v1_reference
         self.facilitation_scale = facilitation_scale
 
-    def run(self, l4_spike_lists, T_bins):
+    def function(self, l4_spikes, T_bins):
         # l4_spike_lists: list of spike arrays (seconds), map to binned counts
         dt = 1.0 / self.v1.fs
-        l4_mat = bin_spikes_to_matrix(l4_spike_lists, T_bins, dt)  # (N_l4, T_bins)
+        l4_mat = bin_spikes_to_matrix(l4_spikes, T_bins, dt)  # (N_l4, T_bins)
         drive = np.zeros(T_bins, dtype=float)
         # horizontal facilitation: if more than one presyn fires at same bin, transiently increase 'u' so more release
         for k, idx in enumerate(self.presyn):
@@ -242,7 +242,7 @@ class L23Unit:
         return np.unique(idx) * self.neu.dt
 
 
-class L56:
+class L56Unit:
     """
     Layer 5/6: collects population activity from L2/3 and computes a feedback modulation map
     that can multiplicatively adjust L4 gain (simulating corticothalamic feedback tuning).
@@ -252,14 +252,14 @@ class L56:
         self.v1 = v1_reference
         self.feedback_strength = feedback_strength
 
-    def compute_feedback(self, l23_spike_lists, video_shape):
+    def function(self, l23_spikes, video_shape):
         """
         Simple map: compute average L2/3 activity per spatial tile, produce modulation factors in (0.5,1.5)
         video_shape: (H,W) used to tile L2/3 activity back to pixel-space.
         """
-        T_frames = len(l23_spike_lists[0]) if len(l23_spike_lists) and isinstance(l23_spike_lists[0], np.ndarray) else 1
+        T_frames = len(l23_spikes[0]) if len(l23_spikes) and isinstance(l23_spikes[0], np.ndarray) else 1
         # coarse approach: compute mean rates for each L2/3 unit and tile to image
-        rates = np.array([len(s) for s in l23_spike_lists], dtype=float)
+        rates = np.array([len(s) for s in l23_spikes], dtype=float)
         if np.max(rates) == 0:
             return np.ones(video_shape, dtype=float)
         norm = rates / (np.max(rates) + 1e-12)
@@ -298,10 +298,10 @@ class V2UnitCorner:
             Receptor(g_max=0.7e-9, E_rev=0.0, tau_rise=0.004, tau_decay=0.08, location='dend', voltage_dependent=True))
         self.v1 = v1_ref
 
-    def run(self, l4_spike_lists, T_bins):
+    def function(self, l56_spikes, T_bins):
         dt = 1.0 / self.v1.fs
-        a = bin_spikes_to_matrix([l4_spike_lists[self.idx_a]], T_bins, dt)[0]
-        b = bin_spikes_to_matrix([l4_spike_lists[self.idx_b]], T_bins, dt)[0]
+        a = bin_spikes_to_matrix([l56_spikes[self.idx_a]], T_bins, dt)[0]
+        b = bin_spikes_to_matrix([l56_spikes[self.idx_b]], T_bins, dt)[0]
         rel_a = self.syn_a.step(a)
         rel_b = self.syn_b.step(b)
         # coincidence detector: product gives strong output when simultaneous
@@ -336,12 +336,12 @@ class V2:
     def _default_syn_params(self):
         return {'U': 0.4, 'tau_rec': 0.4, 'tau_fac': 0.0, 'dt': 1.0 / self.v1.fs}
 
-    def process(self, video_gray):
-        l4_spikes = self.v1.process(video_gray)
-        T_bins = video_gray.shape[0] - len(self.v1.strf.temporal) + 1
+    def function(self, channels):
+        l56_spikes = self.v1.function(channels)
+        T_bins = channels.shape[0] - len(self.v1.strf.temporal) + 1
         out = []
         for u in self.units:
-            out.append(u.run(l4_spikes, T_bins))
+            out.append(u.function(l56_spikes, T_bins))
         return out
 
 
@@ -366,9 +366,9 @@ class V4:
             u['syns'] = [ShortTermSynapse(**self.v2._default_syn_params()) for _ in pres]
             self.units.append(u)
 
-    def process(self, video_gray):
-        v2_spikes = self.v2.process(video_gray)
-        T_bins = video_gray.shape[0] - len(self.v2.v1.strf.temporal) + 1
+    def function(self, channels):
+        v2_spikes = self.v2.function(channels)
+        T_bins = channels.shape[0] - len(self.v2.v1.strf.temporal) + 1
         dt = 1.0 / self.v2.v1.fs
         v2_mat = bin_spikes_to_matrix(v2_spikes, T_bins, dt)
         out = []
@@ -413,9 +413,9 @@ class IT:
         else:
             self.prototype_labels = labels
 
-    def process(self, video_gray):
+    def function(self, channels):
         # get V4 activation counts per unit (simple count-based descriptor)
-        v4_spikes = self.v4.process(video_gray)
+        v4_spikes = self.v4.process(channels)
         Nv4 = len(v4_spikes)
         # make a vector: counts per V4 unit
         vec = np.array([len(s) for s in v4_spikes], dtype=float)
@@ -483,9 +483,9 @@ class VisualCortex:
             v1.units.append(unit)
 
         # convenience methods: process -> run L4 units and then L2/3 & L5/6 later
-        def process(video_gray):
+        def function(video_gray):
             # compute feature maps once
-            feature_maps = v1.strf.apply(video_gray)  # (T',F,H,W)
+            feature_maps = v1.strf.function(video_gray)  # (T',F,H,W)
             T_out = feature_maps.shape[0]
             # L4 step for each unit
             l4_spikes = []
@@ -496,24 +496,23 @@ class VisualCortex:
                 # but to reuse the existing MultiCompNeuron we set l4u.neu to u['neu'] and syn to u['syn']
                 l4u.neu = u['neu']
                 l4u.syn = u['syn']
-                spikes = l4u.step(feature_maps, burst_gain=self.lgn.compute_burst_mask(), modulation=1.0)
+                spikes = l4u.function(feature_maps, burst_gain=self.lgn.compute_burst_mask(), modulation=1.0)
                 l4_spikes.append(spikes)
             return l4_spikes, feature_maps
 
-        v1.process = process
+        v1.function = function
         return v1
 
-    def run(self, video_gray):
+    def function(self, channels):
         """
         Run full pipeline on video_gray (T,H,W) - single channel luminance.
         Returns dict of layer outputs.
         """
         # LGN
-        lgn_out = self.lgn.apply(video_gray)  # M,P,burst_gain
+        lgn_out = self.lgn.function(channels)  # M,P,burst_gain
         # V1 L4: feature maps & spikes
-        l4_spikes, feature_maps = self.v1.process(video_gray)
-        # V2 corners
-        v2_spikes = self.v2.process(video_gray)
+        l4_spikes, feature_maps = self.v1.function(lgn_out)
+
         # L23: stitch edges -> we create simple L23 units from V1 grid mapping
         # reuse v1 units centers to build L23 units where each L23 pools a small set of L4 indices
         # For simplicity, build L23 pooling indices by grouping sequential v1 units
@@ -527,26 +526,30 @@ class VisualCortex:
                           syn_params=self.v2._default_syn_params(), v1_reference=self.v1, facilitation_scale=1.2)
             l23_units.append(l23)
         # compute l23 spikes
-        T_bins = video_gray.shape[0] - len(self.v1.strf.temporal) + 1
+        T_bins = channels.shape[0] - len(self.v1.strf.temporal) + 1
         l4_spike_lists = l4_spikes
         l23_spikes = [u.run(l4_spike_lists, T_bins) for u in l23_units]
         # L5/6 feedback map
-        l56 = L56(self.v1, feedback_strength=0.6)
-        feedback_map = l56.compute_feedback(l23_spikes, (self.H, self.W))
+        l56 = L56Unit(self.v1, feedback_strength=0.6)
+        feedback_map = l56.function(l23_spikes, (self.H, self.W))
         # NOTE: to apply feedback we would re-run L4 with modulation per unit center. For brevity we do not rerun here.
+        # V2 corners
+        v2_spikes = self.v2.function(feedback_map)
         # V4
-        v4_spikes = self.v4.process(video_gray)
+        v4_spikes = self.v4.function(v2_spikes)
         # IT
-        it_spikes = self.it.process(video_gray)
+        it_spikes = self.it.function(v4_spikes)
         return {'LGN': lgn_out, 'L4': l4_spikes, 'L23': l23_spikes, 'V2': v2_spikes, 'V4': v4_spikes, 'IT': it_spikes}
 
 
 # ---------- Demo usage ----------
+"""
 if __name__ == "__main__":
     T, H, W = 60, 64, 64
     frames = np.clip(np.random.randn(T, H, W) * 0.05 + 0.5, 0.0, 1.0)
     pipeline = VisualCortex(H=H, W=W, fs=100.0)
-    out = pipeline.run(frames)
+    out = pipeline.function(frames)
     print("V1 L4 spikes counts (first 8 units):", [len(s) for s in out['L4'][:8]])
     print("V2 corner spikes (first 8):", [len(s) for s in out['V2'][:8]])
     print("IT active units (first 8):", [len(s) for s in out['IT'][:8]])
+"""
