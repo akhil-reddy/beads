@@ -3,7 +3,7 @@ from scipy.signal import fftconvolve, convolve2d
 
 from beads.core.eru.interneuron import ShortTermSynapse, MultiCompartmentNeuron, Receptor
 
-
+# TODO: Redo this logic, for clarity
 # ---------------------------
 # Visual STRF (Gabor-like) used by V1 units
 # ---------------------------
