@@ -140,6 +140,9 @@ class VCortex:
     def __init__(self):
         self.visual_cortex = None
 
+    """
+    Function initializes the visual cortex with a specified H and W.
+    """
     def init_visual_cortex(self, H, W):
         self.visual_cortex = VisualCortex(H=H, W=W, fs=100.0)
 
@@ -149,8 +152,14 @@ class AuditoryCortex:
         self.early_brainstem = None
         self.a1_cortex = None
 
+    """
+    Function initializes the early brainstem with a specified number of channels.
+    """
     def init_early_brainstem(self, fs, number_of_channels):
         self.early_brainstem = EarlyBrainstem(fs, number_of_channels)
 
+    """
+    Function initializes the a1 cortex with a specified sampling rate.
+    """
     def init_a1_cortex(self, fs):
         self.a1_cortex = PrimaryAuditoryCortex(fs)
