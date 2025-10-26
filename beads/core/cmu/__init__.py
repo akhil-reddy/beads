@@ -8,7 +8,7 @@ from beads.core.cmu.transportation.audio import *
 from beads.core.cmu.transportation.vision import *
 from beads.core.eru.hub.audio.a1_cortex import PrimaryAuditoryCortex
 from beads.core.eru.hub.audio.early_brainstem import EarlyBrainstem
-from beads.core.eru.hub.visual.v_cortex import VisualCortex
+from beads.core.eru.hub.visual.v_cortex import VisualCortex as VCortex
 
 
 class Retina:
@@ -136,7 +136,7 @@ class Cochlea:
         self.anf_spike_trains = run(vesicle_releases, self.fs)
 
 
-class VCortex:
+class VisualCortex:
     def __init__(self):
         self.visual_cortex = None
 
@@ -144,7 +144,7 @@ class VCortex:
     Function initializes the visual cortex with a specified H and W.
     """
     def init_visual_cortex(self, H, W):
-        self.visual_cortex = VisualCortex(H=H, W=W, fs=100.0)
+        self.visual_cortex = VCortex(H=H, W=W, fs=100.0)
 
 
 class AuditoryCortex:
