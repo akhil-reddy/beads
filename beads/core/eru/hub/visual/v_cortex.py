@@ -571,7 +571,7 @@ class IT:
                 out.append(np.array([]))
         return out
 
-# TODO: Integrate DSGC into VisualSTRF
+
 # ---------------------------
 # High-level Visual Cortex orchestrator
 # ---------------------------
