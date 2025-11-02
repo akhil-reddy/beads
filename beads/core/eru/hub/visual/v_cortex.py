@@ -627,38 +627,157 @@ class VisualCortex:
                                               voltage_dependent=True))
             v1.units.append(unit)
 
-        def function(frames_lms):
+        def function(frames_lms, dsgc_spike_lists=None, dsgc_dir_count=None, dsgc_tile_stride=(1,1),
+                     dsgc_smoothing_sigma=1.0, dsgc_normalize=True):
             """
             frames_lms: (T,H,W,3) input (L,M,S)
-            returns: l4_spike_lists, feature_maps
+            dsgc_spike_lists: optional list of length D (directions). Each element is a list of per-DSGC arrays (spike times in s).
+                               If None, no motion channel is added.
+            dsgc_dir_count: optional int (D). If None, inferred from dsgc_spike_lists.
+            returns: l4_spike_lists, feature_maps (feature_maps will include appended motion features if DSGCs supplied)
             """
-            # LGN -> get M,P,K streams (T',H,W)
+            # 1) LGN -> get M,P,K streams (T_out,H,W)
             lgn_out = self.lgn.function(frames_lms)
+            T_out = lgn_out['M'].shape[0]     # temporal length after LGN temporal filtering
             # pack streams into channels (T_out,H,W,3) ordering [M,P,K]
-            # determine T_out from LGN streams
-            T_out = lgn_out['M'].shape[0]
             channels = np.stack([lgn_out['M'], lgn_out['P'], lgn_out['K']], axis=-1)  # (T_out,H,W,3)
 
-            # reduce directions to channels: either keep D as separate channels or average to one motion channel
-            motion_maps = dsgc_spike_lists_to_motion_maps(dsgc_spike_lists,None,None, H,W,None)
-            motion_channels = motion_maps.mean(axis=1)[..., None]  # mean over directions -> (T,H,W,1)
-            channels_aug = np.concatenate([channels, motion_channels], axis=-1)  # (T,H,W,4)
-            # compute feature maps (T_feat, F, H, W)
-            feature_maps = v1.strf.function(channels_aug)
-            # run each L4 unit
+            # 2) If no DSGC motion input provided, compute feature maps and exit normally
+            #    Otherwise compute motion_maps aligned to LGN frame grid, convert to motion features,
+            #    and append those features to feature_maps (so VisualSTRF doesn't need to be re-instantiated).
+            # compute base feature maps from color streams
+            feature_maps = v1.strf.function(channels)   # (T_feat, F_total, H, W)
+            T_feat = feature_maps.shape[0]
+            F_total = feature_maps.shape[1]
+            F_spat = v1.strf.F_spat
+            temporal_kernel = v1.strf.temporal
+            dt = 1.0 / self.fs
+
+            if dsgc_spike_lists is None:
+                # no motion augmentation requested
+                l4_spikes = []
+                for u in v1.units:
+                    l4u = L4Unit(f_idx=u['f_idx'], center=u['center'],
+                                 neuron_params=neuron_params, syn_params=syn_params,
+                                 pool_radius=1, amp=30.0, cell_type=u['cell_type'])
+                    l4u.neu = u['neu']
+                    l4u.syn = u['syn']
+                    spikes = l4u.function(feature_maps, burst_gain=lgn_out['burst_gain'], modulation=1.0)
+                    l4_spikes.append(spikes)
+                return l4_spikes, feature_maps
+
+            # --- DSGC provided: build motion maps ---
+            # infer direction count
+            if dsgc_dir_count is None:
+                dsgc_dir_count = len(dsgc_spike_lists)
+
+            # helper: bin DSGC spike lists per direction into (T_out, H, W) rate maps
+            # Expect each element of dsgc_spike_lists to be a list of per-DSGC arrays.
+            # We'll attempt to tile DSGCs onto the HxW grid if counts match, otherwise use tile_stride pooling.
+            from scipy.ndimage import gaussian_filter  # local import safe inside function
+
+            D = dsgc_dir_count
+            Td = T_out
+            motion_maps = np.zeros((Td, D, self.H, self.W), dtype=float)
+
+            for d in range(D):
+                lists = dsgc_spike_lists[d]
+                n_cells = len(lists)
+                # if a one-to-one mapping exists: n_cells == H*W
+                if n_cells == self.H * self.W:
+                    idx = 0
+                    for i in range(self.H):
+                        for j in range(self.W):
+                            times = lists[idx] if idx < n_cells else np.array([])
+                            idx += 1
+                            if len(times):
+                                bins = np.floor(np.asarray(times) / dt).astype(int)
+                                bins = bins[(bins >= 0) & (bins < Td)]
+                                if bins.size:
+                                    counts = np.bincount(bins, minlength=Td)
+                                    motion_maps[:, d, i, j] = counts / dt
+                else:
+                    # fallback: tile the image and pool DSGCs per tile
+                    tile_h, tile_w = dsgc_tile_stride
+                    n_tiles_h = (self.H + tile_h - 1) // tile_h
+                    n_tiles_w = (self.W + tile_w - 1) // tile_w
+                    cells_per_tile = max(1, n_cells // (n_tiles_h * n_tiles_w))
+                    idx = 0
+                    for ih in range(0, self.H, tile_h):
+                        for jw in range(0, self.W, tile_w):
+                            tile_counts = np.zeros(Td, dtype=float)
+                            for c in range(cells_per_tile):
+                                if idx >= n_cells:
+                                    break
+                                times = lists[idx]
+                                idx += 1
+                                if len(times):
+                                    bins = np.floor(np.asarray(times) / dt).astype(int)
+                                    bins = bins[(bins >= 0) & (bins < Td)]
+                                    if bins.size:
+                                        tile_counts += np.bincount(bins, minlength=Td)
+                            i1 = min(self.H, ih + tile_h)
+                            j1 = min(self.W, jw + tile_w)
+                            if cells_per_tile > 0:
+                                rate_map = tile_counts / (dt * cells_per_tile)
+                            else:
+                                rate_map = tile_counts / max(1e-12, dt)
+                            for i2 in range(ih, i1):
+                                for j2 in range(jw, j1):
+                                    motion_maps[:, d, i2, j2] = rate_map
+
+            # smoothing & normalize
+            if dsgc_smoothing_sigma is not None and dsgc_smoothing_sigma > 0:
+                for t in range(Td):
+                    for d in range(D):
+                        motion_maps[t, d] = gaussian_filter(motion_maps[t, d], sigma=dsgc_smoothing_sigma)
+            if dsgc_normalize:
+                # normalize each direction's map to unit max
+                maxv = motion_maps.max(axis=(0,2,3), keepdims=True) + 1e-12
+                motion_maps = motion_maps / maxv
+
+            # collapse direction axis to a single motion channel (simple average across directions)
+            motion_channel = motion_maps.mean(axis=1)  # (T_out, H, W)
+
+            # --- convert motion channel into motion feature-block (apply same spatial bank + temporal kernel) ---
+            # spatial conv per spatial-filter
+            Tt = len(temporal_kernel)
+            T_feat_expected = T_out - Tt + 1
+            if T_feat_expected != T_feat:
+                # consistent alignment: we computed feature_maps from channels (T_out->T_feat); T_feat_expected should match
+                T_feat = min(T_feat, T_feat_expected)
+
+            # compute spatial responses of motion_channel for each spatial filter
+            # spat_motion: (T_out, F_spat, H, W)
+            spat_motion = np.zeros((T_out, F_spat, self.H, self.W))
+            for t in range(T_out):
+                for f in range(F_spat):
+                    spat_motion[t, f] = convolve2d(motion_channel[t], v1.strf.bank[f], mode='same', boundary='symm')
+
+            # temporal conv per (f, i, j) -> motion_features: (T_feat, F_spat, H, W)
+            motion_features = np.zeros((T_feat, F_spat, self.H, self.W))
+            for f in range(F_spat):
+                for i in range(self.H):
+                    for j in range(self.W):
+                        motion_features[:, f, i, j] = np.convolve(spat_motion[:, f, i, j], temporal_kernel, mode='valid')[:T_feat]
+
+            # reshape motion_features into a feature-block matching packing convention: append along feature axis
+            # feature_maps currently (T_feat, F_total, H, W). Append motion block of size F_spat along axis=1
+            feature_maps_aug = np.concatenate([feature_maps, motion_features], axis=1)  # new F = F_total + F_spat
+
+            # 3) run each L4 unit on augmented feature maps
             l4_spikes = []
             for u in v1.units:
-                # create wrapper L4Unit and reuse neuron's objects so state is preserved
-                l4u = L4Unit(f_idx=u['f_idx'], center=u['center'], neuron_params=neuron_params, syn_params=syn_params,
+                l4u = L4Unit(f_idx=u['f_idx'], center=u['center'],
+                             neuron_params=neuron_params, syn_params=syn_params,
                              pool_radius=1, amp=30.0, cell_type=u['cell_type'])
                 l4u.neu = u['neu']
                 l4u.syn = u['syn']
-                spikes = l4u.function(feature_maps, burst_gain=lgn_out['burst_gain'], modulation=1.0)
+                spikes = l4u.function(feature_maps_aug, burst_gain=lgn_out['burst_gain'], modulation=1.0)
                 l4_spikes.append(spikes)
-            return l4_spikes, feature_maps
 
-        v1.process = function
-        return v1
+            return l4_spikes, feature_maps_aug
+
 
     def function(self, frames_lms):
         """
