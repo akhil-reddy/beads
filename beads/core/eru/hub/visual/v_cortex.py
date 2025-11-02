@@ -1,7 +1,9 @@
 import numpy as np
+from scipy.ndimage import gaussian_filter
 from scipy.signal import fftconvolve, convolve2d
 
 from beads.core.eru.interneuron import ShortTermSynapse, MultiCompartmentNeuron, Receptor
+
 
 # ---------------------------
 # Biologically-grounded Gabor / Visual STRF bank (multi-spectral)
@@ -101,6 +103,89 @@ def bin_spikes_to_matrix(spike_lists, T_bins, dt):
     return mat
 
 
+def dsgc_spike_lists_to_motion_maps(dsgc_spike_lists,
+                                    T_bins,
+                                    dt,
+                                    H,
+                                    W,
+                                    dir_count,
+                                    tile_stride=(1, 1),
+                                    smoothing_sigma=1.0,
+                                    normalize=True):
+    """
+    Convert DSGC spike lists into motion-rate maps.
+    - dsgc_spike_lists: list of length D (directions). Each element is a list of per-DSGC arrays (spike times in s).
+                         Each DSGC index should map spatially (e.g., DSGC i -> pixel/tile i).
+    - T_bins, dt: temporal bins and bin width (seconds).
+    - H,W: target map spatial dims. If DSGCs are densely per-pixel, H*W == len(per-direction lists). If DSGCs are tiled,
+           map accordingly (you can provide mapping externally).
+    - dir_count: number of directions in dsgc_spike_lists
+    - tile_stride: (tile_h, tile_w) used when transforming DSGC pixel list into HxW; if DSGC list length == (H/tile_h)*(W/tile_w)
+    Returns:
+      motion_maps: array (T_bins, dir_count, H, W) with smoothed rates (Hz)
+    """
+    D = dir_count
+    Td = T_bins
+    motion_maps = np.zeros((Td, D, H, W), dtype=float)
+
+    # assume per-direction lists are length = (H * W) / (tile_h*tile_w) OR equal to H*W
+    for d in range(D):
+        lists = dsgc_spike_lists[d]
+        n_cells = len(lists)
+        # arrange into a grid if sizes match, otherwise tile mapping must be given
+        if n_cells == H * W:
+            idx = 0
+            for i in range(H):
+                for j in range(W):
+                    times = lists[idx]
+                    idx += 1
+                    if len(times):
+                        bins = np.floor(np.asarray(times) / dt).astype(int)
+                        bins = bins[(bins >= 0) & (bins < Td)]
+                        if bins.size:
+                            counts = np.bincount(bins, minlength=Td)
+                            motion_maps[:, d, i, j] = counts / dt  # convert to Hz
+        else:
+            # fallback: evenly distribute DSGC cells across image tiles
+            tile_h, tile_w = tile_stride
+            cells_per_tile = max(1, n_cells // ((H // tile_h) * (W // tile_w)))
+            idx = 0
+            for ih in range(0, H, tile_h):
+                for jw in range(0, W, tile_w):
+                    # pool cells_per_tile DSGCs into the tile
+                    tile_counts = np.zeros(Td, dtype=float)
+                    for c in range(cells_per_tile):
+                        if idx >= n_cells:
+                            break
+                        times = lists[idx]
+                        idx += 1
+                        if len(times):
+                            bins = np.floor(np.asarray(times) / dt).astype(int)
+                            bins = bins[(bins >= 0) & (bins < Td)]
+                            if bins.size:
+                                tile_counts += np.bincount(bins, minlength=Td)
+                    # fill tile
+                    i1 = min(H, ih + tile_h)
+                    j1 = min(W, jw + tile_w)
+                    rate_map = tile_counts / dt  # Hz
+                    # optionally divide across tile pixels
+                    for i2 in range(ih, i1):
+                        for j2 in range(jw, j1):
+                            motion_maps[:, d, i2, j2] = rate_map / max(1, cells_per_tile)
+
+    # smoothing & normalization
+    for d in range(D):
+        for t in range(Td):
+            motion_maps[t, d] = gaussian_filter(motion_maps[t, d], sigma=smoothing_sigma)
+
+    if normalize:
+        # scale each direction map to unit max across time & space (keeps numerical stability)
+        maxv = motion_maps.max(axis=(0, 2, 3), keepdims=True) + 1e-12
+        motion_maps = motion_maps / maxv
+
+    return motion_maps  # (T_bins, D, H, W)
+
+
 # ---------------------------
 # LGN with explicit M/P/K streams and tonic/burst gating
 # ---------------------------
@@ -145,7 +230,8 @@ class LGN:
         # cs: (T, H, W)
         energy = np.sqrt(np.mean(cs ** 2, axis=(1, 2)))  # per-frame RMS energy
         if len(self.history_buffer) == 0:
-            self.history_buffer = energy[-self.history_len:].tolist() if len(energy) >= self.history_len else energy.tolist()
+            self.history_buffer = energy[-self.history_len:].tolist() if len(
+                energy) >= self.history_len else energy.tolist()
         else:
             self.history_buffer.extend(energy.tolist())
             self.history_buffer = self.history_buffer[-self.history_len:]
@@ -226,8 +312,11 @@ class L4Unit:
         self.center = center  # (i,j)
         self.neu = MultiCompartmentNeuron(neuron_params.copy())
         # canonical receptors: fast AMPA at soma, slow NMDA at dendrite (voltage-dependent)
-        self.neu.add_receptor(Receptor(g_max=1.0e-9, E_rev=0.0, tau_rise=0.0008, tau_decay=0.004, location='soma', name='AMPA'))
-        self.neu.add_receptor(Receptor(g_max=0.6e-9, E_rev=0.0, tau_rise=0.004, tau_decay=0.08, location='dend', name='NMDA', voltage_dependent=True))
+        self.neu.add_receptor(
+            Receptor(g_max=1.0e-9, E_rev=0.0, tau_rise=0.0008, tau_decay=0.004, location='soma', name='AMPA'))
+        self.neu.add_receptor(
+            Receptor(g_max=0.6e-9, E_rev=0.0, tau_rise=0.004, tau_decay=0.08, location='dend', name='NMDA',
+                     voltage_dependent=True))
         self.syn = ShortTermSynapse(**syn_params)
         self.pool_radius = pool_radius
         self.amp = amp
@@ -294,8 +383,11 @@ class L23Unit:
         self.syns = [ShortTermSynapse(**syn_params) for _ in self.presyn]
         self.neu = MultiCompartmentNeuron(neuron_params.copy())
         # canonical receptors (AMPA + NMDA)
-        self.neu.add_receptor(Receptor(g_max=1.0e-9, E_rev=0.0, tau_rise=0.0008, tau_decay=0.004, location='soma', name='AMPA'))
-        self.neu.add_receptor(Receptor(g_max=0.7e-9, E_rev=0.0, tau_rise=0.004, tau_decay=0.08, location='dend', name='NMDA', voltage_dependent=True))
+        self.neu.add_receptor(
+            Receptor(g_max=1.0e-9, E_rev=0.0, tau_rise=0.0008, tau_decay=0.004, location='soma', name='AMPA'))
+        self.neu.add_receptor(
+            Receptor(g_max=0.7e-9, E_rev=0.0, tau_rise=0.004, tau_decay=0.08, location='dend', name='NMDA',
+                     voltage_dependent=True))
         self.v1 = v1_reference
         self.facilitation_scale = facilitation_scale
 
@@ -360,7 +452,8 @@ class V2UnitCorner:
         self.syn_b = ShortTermSynapse(**syn_params)
         self.neu = MultiCompartmentNeuron(neuron_params.copy())
         self.neu.add_receptor(Receptor(g_max=1.0e-9, E_rev=0.0, tau_rise=0.0008, tau_decay=0.004, location='soma'))
-        self.neu.add_receptor(Receptor(g_max=0.7e-9, E_rev=0.0, tau_rise=0.004, tau_decay=0.08, location='dend', voltage_dependent=True))
+        self.neu.add_receptor(
+            Receptor(g_max=0.7e-9, E_rev=0.0, tau_rise=0.004, tau_decay=0.08, location='dend', voltage_dependent=True))
         self.v1 = v1_ref
 
     def function(self, l4_spikes, T_bins):
@@ -420,7 +513,8 @@ class V4:
             u = {'pres': pres, 'w': w,
                  'neu': MultiCompartmentNeuron(self.v2._default_neuron_params())}
             u['neu'].add_receptor(Receptor(g_max=1.2e-9, E_rev=0.0, tau_rise=0.0008, tau_decay=0.004, location='soma'))
-            u['neu'].add_receptor(Receptor(g_max=0.8e-9, E_rev=0.0, tau_rise=0.004, tau_decay=0.08, location='dend', voltage_dependent=True))
+            u['neu'].add_receptor(Receptor(g_max=0.8e-9, E_rev=0.0, tau_rise=0.004, tau_decay=0.08, location='dend',
+                                           voltage_dependent=True))
             u['syns'] = [ShortTermSynapse(**self.v2._default_syn_params()) for _ in pres]
             self.units.append(u)
 
@@ -477,7 +571,7 @@ class IT:
                 out.append(np.array([]))
         return out
 
-
+# TODO: Integrate DSGC into VisualSTRF
 # ---------------------------
 # High-level Visual Cortex orchestrator
 # ---------------------------
@@ -497,17 +591,18 @@ class VisualCortex:
                          'g_Na': 1200e-9, 'E_Na': 50e-3, 'g_K': 360e-9, 'E_K': -77e-3, 'g_c': 5e-9, 'dt': 1.0 / fs}
         syn_params = {'U': 0.4, 'tau_rec': 0.4, 'tau_fac': 0.0, 'dt': 1.0 / fs}
         # build V1
-        self.v1 = self.build_v1(H, W, fs, n_units=n_v1_units, neuron_params=neuron_params, syn_params=syn_params)
+        self.v1 = self.build_v1(None, H, W, fs, n_units=n_v1_units, neuron_params=neuron_params, syn_params=syn_params)
         # V2, V4, IT
         self.v2 = V2(self.v1, n_units=48)
         self.v4 = V4(self.v2, n_units=32)
         self.it = IT(self.v4, n_units=32)
 
-    def build_v1(self, H, W, fs, n_units, neuron_params, syn_params):
+    def build_v1(self, dsgc_spike_lists, H, W, fs, n_units, neuron_params, syn_params):
         v1 = type("V1_container", (), {})()
         v1.fs = self.fs
         # VisualSTRF: F_spat * C features (C=3: M,P,K streams)
-        v1.strf = VisualSTRF(spatial_size=21, orientations=8, scales=[3, 6], temporal_taps=9, fs=self.fs, spectral_bands=3)
+        v1.strf = VisualSTRF(spatial_size=21, orientations=8, scales=[3, 6], temporal_taps=9, fs=self.fs,
+                             spectral_bands=3)
         grid = int(np.sqrt(n_units))
         coords = []
         for i in range(grid):
@@ -526,8 +621,10 @@ class VisualCortex:
                     'syn': ShortTermSynapse(**syn_params),
                     'cell_type': cell_type}
             # receptors (matching L4Unit)
-            unit['neu'].add_receptor(Receptor(g_max=1.0e-9, E_rev=0.0, tau_rise=0.0008, tau_decay=0.004, location='soma'))
-            unit['neu'].add_receptor(Receptor(g_max=0.6e-9, E_rev=0.0, tau_rise=0.004, tau_decay=0.08, location='dend', voltage_dependent=True))
+            unit['neu'].add_receptor(
+                Receptor(g_max=1.0e-9, E_rev=0.0, tau_rise=0.0008, tau_decay=0.004, location='soma'))
+            unit['neu'].add_receptor(Receptor(g_max=0.6e-9, E_rev=0.0, tau_rise=0.004, tau_decay=0.08, location='dend',
+                                              voltage_dependent=True))
             v1.units.append(unit)
 
         def function(frames_lms):
@@ -541,13 +638,19 @@ class VisualCortex:
             # determine T_out from LGN streams
             T_out = lgn_out['M'].shape[0]
             channels = np.stack([lgn_out['M'], lgn_out['P'], lgn_out['K']], axis=-1)  # (T_out,H,W,3)
+
+            # reduce directions to channels: either keep D as separate channels or average to one motion channel
+            motion_maps = dsgc_spike_lists_to_motion_maps(dsgc_spike_lists,None,None, H,W,None)
+            motion_channels = motion_maps.mean(axis=1)[..., None]  # mean over directions -> (T,H,W,1)
+            channels_aug = np.concatenate([channels, motion_channels], axis=-1)  # (T,H,W,4)
             # compute feature maps (T_feat, F, H, W)
-            feature_maps = v1.strf.function(channels)
+            feature_maps = v1.strf.function(channels_aug)
             # run each L4 unit
             l4_spikes = []
             for u in v1.units:
                 # create wrapper L4Unit and reuse neuron's objects so state is preserved
-                l4u = L4Unit(f_idx=u['f_idx'], center=u['center'], neuron_params=neuron_params, syn_params=syn_params, pool_radius=1, amp=30.0, cell_type=u['cell_type'])
+                l4u = L4Unit(f_idx=u['f_idx'], center=u['center'], neuron_params=neuron_params, syn_params=syn_params,
+                             pool_radius=1, amp=30.0, cell_type=u['cell_type'])
                 l4u.neu = u['neu']
                 l4u.syn = u['syn']
                 spikes = l4u.function(feature_maps, burst_gain=lgn_out['burst_gain'], modulation=1.0)
@@ -590,6 +693,7 @@ class VisualCortex:
         # IT readout
         it_spikes = self.it.function(v4_spikes)
         return {'LGN': None, 'L4': l4_spikes, 'L23': l23_spikes, 'V2': v2_spikes, 'V4': v4_spikes, 'IT': it_spikes}
+
 
 # ---------------------------
 # Minimal demo (commented)
