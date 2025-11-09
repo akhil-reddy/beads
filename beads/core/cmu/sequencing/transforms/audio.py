@@ -89,6 +89,7 @@ class RibbonSynapse:
         return n_rel
 
 
+# TODO: Temporary code block to test these cells. Input and output should be through files (which can be used for the demo)
 '''
 # For each BM segment:
 

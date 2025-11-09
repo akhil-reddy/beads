@@ -359,3 +359,5 @@ def initialize_photoreceptors(surface_radius=1248.0, cone_threshold=208.0, hex_s
                             cells.append(create_cones(x, y, hex_size))
 
     return cells
+
+# TODO: Temporary code block to test these cells. Input and output should be through files (which can be used for the demo)

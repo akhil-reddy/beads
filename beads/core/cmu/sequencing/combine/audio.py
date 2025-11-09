@@ -278,3 +278,5 @@ def run(waveform, fs, bm: BasilarMembrane, ohcs: list, moc: MedialOlivocochlear,
             ohc.function(dt, syn_current)
 
     # end loop
+
+# TODO: Temporary code block to test these cells. Input and output should be through files (which can be used for the demo)

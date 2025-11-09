@@ -814,6 +814,7 @@ class VisualCortex:
         return {'LGN': None, 'L4': l4_spikes, 'L23': l23_spikes, 'V2': v2_spikes, 'V4': v4_spikes, 'IT': it_spikes}
 
 
+# TODO: Temporary code block to test these cells. Input and output should be through files (which can be used for the demo)
 # ---------------------------
 # Minimal demo (commented)
 # ---------------------------

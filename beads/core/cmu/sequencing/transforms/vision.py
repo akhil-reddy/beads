@@ -335,3 +335,5 @@ def initialize_starburst_amacrine_cells(cone_bipolar_cells, distance_threshold=5
                                 nonlin_thresh=nonlin_thresh, tau=tau)
         starburst_cells.append(sac)
     return starburst_cells
+
+# TODO: Temporary code block to test these cells. Input and output should be through files (which can be used for the demo)

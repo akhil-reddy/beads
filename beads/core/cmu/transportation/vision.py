@@ -417,3 +417,5 @@ def initialize_small_bistratified_cells(cone_bipolar_cells, group_size=6, lambda
                                         integration_factor=integration_factor, threshold=threshold)
         small_bistratified_ganglion_cells.append(sbg)
     return small_bistratified_ganglion_cells
+
+# TODO: Temporary code block to test these cells. Input and output should be through files (which can be used for the demo)

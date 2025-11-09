@@ -117,3 +117,5 @@ def run(vesicle_releases, fs, fiber_params=None,
         all_spike_trains.append(channel_trains)
 
     return all_spike_trains
+
+# TODO: Temporary code block to test these cells. Input and output should be through files (which can be used for the demo)

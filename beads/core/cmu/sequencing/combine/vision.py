@@ -302,3 +302,5 @@ def initialize_cone_bipolar_cells(horizontal_cells, aii_amacrine_cells):
         cone_bipolar_cells.append(bipolar)
 
     return cone_bipolar_cells
+
+# TODO: Temporary code block to test these cells. Input and output should be through files (which can be used for the demo)
