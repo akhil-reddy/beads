@@ -540,7 +540,7 @@ class V4:
 
 
 # ---------------------------
-# IT: prototype associative readout (as before)
+# IT: prototype associative readout
 # ---------------------------
 class IT:
     def __init__(self, v4_obj, n_units=32):
