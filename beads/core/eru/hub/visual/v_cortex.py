@@ -5,6 +5,8 @@ from scipy.signal import fftconvolve, convolve2d
 from beads.core.eru.interneuron import ShortTermSynapse, MultiCompartmentNeuron, Receptor
 
 
+# TODO: Revamp this code to make it simpler
+
 # ---------------------------
 # Biologically-grounded Gabor / Visual STRF bank (multi-spectral)
 # ---------------------------
