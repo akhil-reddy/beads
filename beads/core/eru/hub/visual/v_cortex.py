@@ -5,7 +5,9 @@ from scipy.signal import fftconvolve, convolve2d
 from beads.core.eru.interneuron import ShortTermSynapse, MultiCompartmentNeuron, Receptor
 
 
-# TODO: Revamp this code to make it simpler
+# TODO: Revamp this code to make it simpler - you have a 4 dimensional vector (flattened 2D retina
+#   space, M/P/K/DSGC channels and a bank of patterns) which needs to be used to inform (direction,
+#   collinearity, etc) various parts of the visual cortex.
 
 # ---------------------------
 # Biologically-grounded Gabor / Visual STRF bank (multi-spectral)
