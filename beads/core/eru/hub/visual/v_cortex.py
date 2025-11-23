@@ -6,8 +6,9 @@ from beads.core.eru.interneuron import ShortTermSynapse, MultiCompartmentNeuron,
 
 
 # TODO: Revamp this code to make it simpler - you have a 4 dimensional vector (flattened 2D retina
-#   space, M/P/K/DSGC channels and a bank of patterns) which needs to be used to inform (direction,
-#   collinearity, etc) various parts of the visual cortex.
+#   space, M/P/K/DSGC channels and a bank of temporal phases) which needs to be used to inform (direction,
+#   collinearity, etc) various parts of the visual cortex. Is a multicompartment LIF neuron a good bridge spatially
+#   and across channels?
 
 # ---------------------------
 # Biologically-grounded Gabor / Visual STRF bank (multi-spectral)
