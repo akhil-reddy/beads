@@ -5,10 +5,17 @@ from scipy.signal import fftconvolve, convolve2d
 from beads.core.eru.interneuron import ShortTermSynapse, MultiCompartmentNeuron, Receptor
 
 
-# TODO: Revamp this code to make it simpler - you have a 4 dimensional vector (flattened 2D retina
-#   space, M/P/K/DSGC channels and a bank of temporal phases) which needs to be used to inform (direction,
-#   collinearity, etc) various parts of the visual cortex. Is a multicompartment LIF neuron a good bridge spatially
-#   and across channels?
+# TODO: Revamp this code to make it simpler
+"""
+You have a 5 dimensional vector (flattened 2D retina space, time, M/P/K/DSGC channels and a bank of temporal 
+phases) which needs to be used to inform (direction, collinearity, etc) various parts of the visual 
+cortex. 
+
+A multicompartment LIF neuron is a good bridge spatially and across channels if the tuning is 
+done properly. However, since we don't incorporate genetics or neurotransmitters yet, post demo finetuning
+is probably the only option left. A structural segment-by-segment output vs expectation analysis would
+alleviate the finetuning remaining in the system.
+"""
 
 # ---------------------------
 # Biologically-grounded Gabor / Visual STRF bank (multi-spectral)
