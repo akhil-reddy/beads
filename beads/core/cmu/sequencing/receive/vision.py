@@ -2,10 +2,14 @@
     Initialize the retina of the CMU. In this function, create the equivalent of a digital eye based on rods and cones'
     distribution. Study other computational models of the human eye to refine this data structure.
 """
-
+import argparse
+import colorsys
 import math
 import random
 import numpy as np
+import pandas as pd
+from PIL import Image
+from matplotlib import pyplot as plt
 
 
 # -- Govardovskii nomogram functions ------------------------------------------
@@ -242,9 +246,9 @@ class Cell:
         self.y = y
         self.cell_type = cell_type  # "cone" or "rod"
         if cell_type == 'rod':
-            self.cell = Rod(threshold=activation_threshold)
+            self.cell = Rod()
         elif cell_type == 'cone':
-            self.cell = Cone(subtype=subtype, threshold=activation_threshold)
+            self.cell = Cone(subtype=subtype)
         self.shape = shape  # "triangle" or "hexagon"
         self.subtype = subtype
         self.activation_threshold = activation_threshold
@@ -257,7 +261,7 @@ def create_cones(x, y, hex_size):
     vertices = []
     cells = []
     for k in range(6):
-        angle = math.pi / 3 * k
+        angle = k * math.pi / 3 + math.pi / 6
         vx = x + hex_size * math.cos(angle)
         vy = y + hex_size * math.sin(angle)
         vertices.append((vx, vy))
@@ -276,17 +280,15 @@ def create_cones(x, y, hex_size):
     return cells
 
 
-def create_rods(x, y, factor, hex_size):
+def create_rod(x, y, factor, hex_size):
     # Outside the fovea: divide the hexagon into 3 equal parallelograms.
     # For a pointy-topped hexagon of "radius" hex_size, the distance between parallel sides is
     # hex_size * sqrt(3). One-third of that distance is: hex_size / sqrt(3).
     # We choose the subdivision direction along 30° (unit vector u = (cos30, sin30)).
-    u_x = math.cos(math.radians(30))  # √3/2
-    u_y = math.sin(math.radians(30))  # 1/2
-    offset_distance = hex_size / math.sqrt(3)
+    angle = factor * 2 * math.pi / 3 + math.pi / 6
 
-    cx = x + factor * offset_distance * u_x
-    cy = y + factor * offset_distance * u_y
+    cx = x + hex_size / 2 * math.cos(angle)
+    cy = y + hex_size / 2 * math.sin(angle)
     return Cell(cx, cy, cell_type="rod", shape="parallelogram")
 
 
@@ -331,7 +333,7 @@ def initialize_photoreceptors(surface_radius=1248.0, cone_threshold=208.0, hex_s
             if math.sqrt(x * x + y * y) <= surface_radius:
                 distance = math.sqrt(x * x + y * y)
                 if distance < cone_threshold:
-                    cells.append(create_cones(x, y, hex_size))
+                    cells.extend(create_cones(x, y, hex_size))
                 else:
                     # Compute a quadratic probability for rods that peaks at the midpoint.
                     # The peak is at r_peak, which is the midpoint between cone_threshold and surface_radius.
@@ -350,14 +352,100 @@ def initialize_photoreceptors(surface_radius=1248.0, cone_threshold=208.0, hex_s
                     # Clamp to ensure the probability is between 0 and 1.
                     rod_probability = max(0.0, min(rod_probability, 1.0))
 
-                    for factor in [-1, 0, 1]:
+                    if random.random() < rod_probability:
                         # Only create a rod if a random check passes, with probability based on distance.
-                        if random.random() < rod_probability:
-                            cells.append(create_rods(x, y, factor, hex_size))
-                        # Create cones near to the fovea as well
-                        elif distance < r_peak:
-                            cells.append(create_cones(x, y, hex_size))
+                        for factor in [0, 1, 2]:
+                            cells.append(create_rod(x, y, factor, hex_size))
+                    # Create cones near to the fovea as well
+                    elif distance < r_peak:
+                        cells.extend(create_cones(x, y, hex_size))
 
     return cells
 
-# TODO: Temporary code block to test these cells. Input and output should be through files (which can be used for the demo)
+
+# -------------------
+# Small helper: map RGB -> approximate dominant wavelength using hue
+# (fast, approximate; replace with spectral method if you have sensor spectral data)
+# -------------------
+def rgb_to_wavelength(r, g, b):
+    r1, g1, b1 = [v / 255.0 for v in (r, g, b)]
+    h, s, v = colorsys.rgb_to_hsv(r1, g1, b1)
+    return 380.0 + h * (700.0 - 380.0)
+
+
+# Temporary code block to test these cells. Input and output should be through files (which can be used for the demo)
+def test():
+    p = argparse.ArgumentParser()
+    p.add_argument("--image", required=True, help="Input image (RGB) to sample")
+    p.add_argument("--out_csv", default="/Users/akhilreddy/IdeaProjects/beads/out/visual/receive_out.csv")
+    p.add_argument("--out_png", default="/Users/akhilreddy/IdeaProjects/beads/out/visual/receive_out.png")
+    p.add_argument("--surface_radius", type=float, default=1248.0, help="Retina radius (microns)")
+    p.add_argument("--cone_threshold", type=float, default=208.0, help="Radius (microns) inside which cones dominate")
+    p.add_argument("--hex_size", type=float, default=1.0, help="Hex tile size (microns)")
+    args = p.parse_args()
+
+    img = Image.open(args.image).convert("RGB")
+    arr = np.array(img)
+    H_img, W_img = arr.shape[0], arr.shape[1]
+
+    cells = initialize_photoreceptors(surface_radius=args.surface_radius,
+                                      cone_threshold=args.cone_threshold,
+                                      hex_size=args.hex_size)
+
+    # map microns coords centered at 0 -> pixel coords
+    scale_x = W_img / (2.0 * args.surface_radius)
+    scale_y = H_img / (2.0 * args.surface_radius)
+
+    records = []
+    for idx, c in enumerate(cells):
+        px = int((c.x + args.surface_radius) * scale_x)
+        py = int((c.y + args.surface_radius) * scale_y)
+        px = max(0, min(W_img - 1, px))
+        py = max(0, min(H_img - 1, py))
+        R, G, B = arr[py, px]
+        wav = rgb_to_wavelength(R, G, B)
+        # compute response using cell's phototransduction function
+        resp = 0.0
+        if c.cell is not None:
+            resp = float(c.cell.function(int(R), int(G), int(B), wav))
+        records.append({
+            "idx": idx,
+            "x_micron": float(c.x),
+            "y_micron": float(c.y),
+            "pixel_x": int(px),
+            "pixel_y": int(py),
+            "cell_type": c.cell_type,
+            "subtype": c.subtype,
+            "response": resp
+        })
+
+    df = pd.DataFrame.from_records(records)
+    df.to_csv(args.out_csv, index=False)
+    print(f"Wrote CSV: {args.out_csv}  (n_cells = {len(df)})")
+
+    # overlay: plot image and scatter receptors (size ~ response)
+    plt.figure(figsize=(10, 6))
+    plt.imshow(img)
+    cones = df[df["cell_type"] == "cone"]
+    rods = df[df["cell_type"] == "rod"]
+    # scale sizes for readability
+    if df["response"].max() > 0:
+        max_resp = df["response"].max()
+    else:
+        max_resp = 1.0
+    size_scale = 40.0
+    plt.scatter(cones["pixel_x"], cones["pixel_y"],
+                s=(np.clip(cones["response"] / max_resp * size_scale, 2, size_scale)),
+                marker="o", alpha=0.7, linewidths=0.4, edgecolors='none')
+    plt.scatter(rods["pixel_x"], rods["pixel_y"],
+                s=(np.clip(rods["response"] / max_resp * size_scale, 2, size_scale)),
+                marker="s", alpha=0.6, linewidths=0.4, edgecolors='none')
+    plt.axis("off")
+    plt.title("Photoreceptor positions & response (size ∝ response)")
+    plt.tight_layout()
+    plt.savefig(args.out_png, dpi=150)
+    plt.close()
+    print(f"Wrote overlay PNG: {args.out_png}")
+
+
+test()
