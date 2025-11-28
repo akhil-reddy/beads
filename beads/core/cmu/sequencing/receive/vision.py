@@ -387,6 +387,7 @@ def test():
     img = Image.open(args.image).convert("RGB")
     arr = np.array(img)
     H_img, W_img = arr.shape[0], arr.shape[1]
+    print(f"Loaded image: {args.image} ({W_img}x{H_img})")
 
     cells = initialize_photoreceptors(surface_radius=args.surface_radius,
                                       cone_threshold=args.cone_threshold,
