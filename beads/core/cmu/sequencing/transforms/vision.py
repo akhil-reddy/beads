@@ -146,7 +146,7 @@ def unit_vector(angle):
     return np.array([np.cos(angle), np.sin(angle)])
 
 
-def cluster_bipolar_cells(bipolar_cells, distance_threshold=50.0, min_cluster_size=0):  # distance is in microns
+def cluster_bipolar_cells_upto_distance(bipolar_cells, distance_threshold=50.0, min_cluster_size=0):  # distance is in microns
     """
     Group bipolar cells into clusters based on their (x, y) positions.
 
@@ -328,7 +328,7 @@ def initialize_starburst_amacrine_cells(cone_bipolar_cells, distance_threshold=5
     Returns:
        starburst_cells: A list of starburst amacrine cells.
     """
-    clusters = cluster_bipolar_cells(cone_bipolar_cells, distance_threshold, min_cluster_size)
+    clusters = cluster_bipolar_cells_upto_distance(cone_bipolar_cells, distance_threshold, min_cluster_size)
     starburst_cells = []
     for cluster in clusters:
         sac = StarburstAmacrine(cluster, lambda_r=lambda_r, nonlin_gain=nonlin_gain,
