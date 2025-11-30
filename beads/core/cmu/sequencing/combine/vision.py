@@ -5,9 +5,14 @@ Before this operation, the RGB stimulus is converted into a lightweight "beehive
 is analogous to a set of coloured rain drops separated by a membrane.
 
 """
+import argparse
 import math
+import pickle
 
 import numpy as np
+import pandas as pd
+from PIL import Image
+from matplotlib import pyplot as plt
 
 """
 After conversion, each unit / "drop" is combined with its neighbours based on similarity. The membrane
@@ -304,3 +309,64 @@ def initialize_cone_bipolar_cells(horizontal_cells, aii_amacrine_cells):
     return cone_bipolar_cells
 
 # TODO: Temporary code block to test these cells. Input and output should be through files (which can be used for the demo)
+def test():
+    with open('/Users/akhilreddy/IdeaProjects/beads/out/visual/receive_out.pkl', 'rb') as file:
+        photoreceptor_cells = pickle.load(file)
+
+    # map microns coords centered at 0 -> pixel coords
+    scale_x = W_img / (2.0 * args.surface_radius)
+    scale_y = H_img / (2.0 * args.surface_radius)
+
+    records = []
+    for idx, c in enumerate(cells):
+        px = int((c.x + args.surface_radius) * scale_x)
+        py = int((c.y + args.surface_radius) * scale_y)
+        px = max(0, min(W_img - 1, px))
+        py = max(0, min(H_img - 1, py))
+        R, G, B = arr[py, px]
+        wav = rgb_to_wavelength(R, G, B)
+        # compute response using cell's phototransduction function
+        resp = 0.0
+        if c.cell is not None:
+            resp = float(c.cell.function(int(R), int(G), int(B), wav))
+        records.append({
+            "idx": idx,
+            "x_micron": float(c.x),
+            "y_micron": float(c.y),
+            "pixel_x": int(px),
+            "pixel_y": int(py),
+            "cell_type": c.cell_type,
+            "subtype": c.subtype,
+            "response": resp
+        })
+
+    df = pd.DataFrame.from_records(records)
+    df.to_csv(args.out_csv, index=False)
+    print(f"Wrote CSV: {args.out_csv}  (n_cells = {len(df)})")
+
+    # overlay: plot image and scatter receptors (size ~ response)
+    plt.figure(figsize=(10, 6))
+    plt.imshow(img)
+    cones = df[df["cell_type"] == "cone"]
+    rods = df[df["cell_type"] == "rod"]
+    # scale sizes for readability
+    if df["response"].max() > 0:
+        max_resp = df["response"].max()
+    else:
+        max_resp = 1.0
+    size_scale = 4.0
+    plt.scatter(cones["pixel_x"], cones["pixel_y"],
+                s=(np.clip(cones["response"] / max_resp * size_scale, 2, size_scale)),
+                marker="o", alpha=0.7, linewidths=0.4, edgecolors='none')
+    plt.scatter(rods["pixel_x"], rods["pixel_y"],
+                s=(np.clip(rods["response"] / max_resp * size_scale, 2, size_scale)),
+                marker=".", alpha=0.6, linewidths=0.4, edgecolors='none')
+    plt.axis("off")
+    plt.title("Photoreceptor positions & response (size ∝ response)")
+    plt.tight_layout()
+    plt.savefig(args.out_png, dpi=150)
+    plt.close()
+    print(f"Wrote overlay PNG: {args.out_png}")
+
+
+test()

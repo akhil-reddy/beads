@@ -10,6 +10,7 @@ import numpy as np
 import pandas as pd
 from PIL import Image
 from matplotlib import pyplot as plt
+import pickle
 
 
 # -- Govardovskii nomogram functions ------------------------------------------
@@ -392,6 +393,9 @@ def test():
     cells = initialize_photoreceptors(surface_radius=args.surface_radius,
                                       cone_threshold=args.cone_threshold,
                                       hex_size=args.hex_size)
+    with open('/Users/akhilreddy/IdeaProjects/beads/out/visual/receive_out.pkl', 'wb') as file:
+        # noinspection PyTypeChecker
+        pickle.dump(cells, file)
 
     # map microns coords centered at 0 -> pixel coords
     scale_x = W_img / (2.0 * args.surface_radius)
