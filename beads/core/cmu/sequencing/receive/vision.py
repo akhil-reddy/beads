@@ -434,13 +434,13 @@ def test():
         max_resp = df["response"].max()
     else:
         max_resp = 1.0
-    size_scale = 40.0
+    size_scale = 4.0
     plt.scatter(cones["pixel_x"], cones["pixel_y"],
                 s=(np.clip(cones["response"] / max_resp * size_scale, 2, size_scale)),
                 marker="o", alpha=0.7, linewidths=0.4, edgecolors='none')
     plt.scatter(rods["pixel_x"], rods["pixel_y"],
                 s=(np.clip(rods["response"] / max_resp * size_scale, 2, size_scale)),
-                marker="s", alpha=0.6, linewidths=0.4, edgecolors='none')
+                marker=".", alpha=0.6, linewidths=0.4, edgecolors='none')
     plt.axis("off")
     plt.title("Photoreceptor positions & response (size ∝ response)")
     plt.tight_layout()
