@@ -11,8 +11,6 @@ import pickle
 
 import numpy as np
 import pandas as pd
-from PIL import Image
-from matplotlib import pyplot as plt
 
 """
 After conversion, each unit / "drop" is combined with its neighbours based on similarity. The membrane
@@ -25,13 +23,14 @@ interact constructively / destructively so that "context" spreads out horizontal
 
 
 class Horizontal:
-    def __init__(self, x, y, stimulus, area=1.0):
+    def __init__(self, x, y, photoreceptor_cell=None):
         self.x = x
         self.y = y
-        self.stimulus = stimulus  # Expected to be a numpy array [R, G, B]
+        self.photoreceptor_cell = photoreceptor_cell
+        self.stimulus = 0.0
         self.field_stimulus = 0.0
-        self.area = area
         self.pointers = []  # List of neighbouring Horizontal cells
+        self.latest = None
 
     '''
     In a traditional ML sense, this operation is equivalent to channel preprocessing / convolution in a
@@ -62,34 +61,14 @@ class Horizontal:
                 if distance <= radius:
                     self.pointers.append(cell)
 
-    def center_calculate(self, k_n=1.0, lambda_n=175.0):  # lambda in microns
+    def set_stimulus(self, stimulus):  # lambda in microns
         """
-        Calculate center stimulus from receptor field.
+        Set center stimulus
 
         Args:
-            k_n (float): Amplitude for the narrow (center) component.
-            lambda_n (float): Decay constant for the narrow component.
-
-        Returns:
-            numpy.ndarray: The receptor stimulus (ensured non-negative).
+            stimulus (float): Stimulus value.
         """
-        if not self.pointers:
-            self.field_stimulus = self.stimulus
-
-        # The receptor field includes the photoreceptor directly under the horizontal cell
-        narrow_weighted_sum = self.stimulus * k_n
-        narrow_total_weight = k_n
-
-        # Compute the weight for each neighbor and accumulate weighted stimuli
-        for cell in self.pointers:
-            d = math.hypot(self.x - cell.x, self.y - cell.y)
-
-            narrow_weight = k_n * math.exp(-d / lambda_n)
-            narrow_weighted_sum += cell.stimulus * narrow_weight
-            narrow_total_weight += narrow_weight
-
-        narrow_weighted_avg = narrow_weighted_sum / narrow_total_weight
-        self.field_stimulus = narrow_weighted_avg
+        self.stimulus = stimulus
 
     '''
     In a traditional ML sense, this operation is equivalent to the convolutional operator
@@ -109,7 +88,7 @@ class Horizontal:
             numpy.ndarray: The new inhibited stimulus (ensured non-negative).
         """
         if not self.pointers:
-            return self.field_stimulus
+            return self.stimulus
 
         # The horizontal cells coupled with gap junctions
         wide_weighted_sum = np.zeros_like(self.stimulus, dtype=float)
@@ -124,20 +103,20 @@ class Horizontal:
             wide_total_weight += wide_weight
 
         wide_weighted_avg = wide_weighted_sum / wide_total_weight
+        self.field_stimulus = wide_weighted_avg
 
         # Subtract a fraction of the weighted average from the current stimulus to apply inhibition.
-        inhibited_stimulus = self.field_stimulus - inhibition_strength * wide_weighted_avg
+        inhibited_stimulus = self.stimulus - inhibition_strength * wide_weighted_avg
 
         # Ensure the resulting stimulus remains non-negative.
         inhibited_stimulus = np.maximum(inhibited_stimulus, 0)
-        return inhibited_stimulus
+        self.latest = inhibited_stimulus
+        return self.latest
 
-    def set_stimulus(self, input_stimulus):
-        self.stimulus = input_stimulus
-
-    def function(self):
-        self.center_calculate()
-        return self.surround_inhibit()
+    def function(self, stimulus):
+        self.set_stimulus(stimulus)
+        self.latest = self.surround_inhibit()
+        return self.latest
 
 
 def get_opponent_channels(L, M, S):
@@ -165,9 +144,7 @@ def initialize_horizontal_cells(photoreceptor_cells, inhibition_radius=10.0):
     for cell in photoreceptor_cells:
         if cell.cell_type == "cone":
             # In a full run, 'cell' would already have a stimulus attribute.
-            # Here we initialize with a default (e.g., zero stimulus for [R,G,B]).
-            default_stimulus = np.array([0.0, 0.0, 0.0])
-            horizontal_cells.append(Horizontal(cell.x, cell.y, default_stimulus))
+            horizontal_cells.append(Horizontal(cell.x, cell.y, cell))
 
     # Link each horizontal cell to its neighbours based on the inhibition_radius.
     for h_cell in horizontal_cells:
@@ -308,65 +285,41 @@ def initialize_cone_bipolar_cells(horizontal_cells, aii_amacrine_cells):
 
     return cone_bipolar_cells
 
+
 # TODO: Temporary code block to test these cells. Input and output should be through files (which can be used for the demo)
 def test():
-    with open('/Users/akhilreddy/IdeaProjects/beads/out/visual/receive_out.pkl', 'rb') as file:
+    p = argparse.ArgumentParser()
+    p.add_argument("--out_csv", default="/Users/akhilreddy/IdeaProjects/beads/out/visual/combine_out.csv")
+    args = p.parse_args()
+
+    with open('/Users/akhilreddy/IdeaProjects/beads/out/visual/photoreceptors.pkl', 'rb') as file:
         photoreceptor_cells = pickle.load(file)
 
-    # map microns coords centered at 0 -> pixel coords
-    scale_x = W_img / (2.0 * args.surface_radius)
-    scale_y = H_img / (2.0 * args.surface_radius)
+    horizontal_cells = initialize_horizontal_cells(photoreceptor_cells)
 
     records = []
-    for idx, c in enumerate(cells):
-        px = int((c.x + args.surface_radius) * scale_x)
-        py = int((c.y + args.surface_radius) * scale_y)
-        px = max(0, min(W_img - 1, px))
-        py = max(0, min(H_img - 1, py))
-        R, G, B = arr[py, px]
-        wav = rgb_to_wavelength(R, G, B)
-        # compute response using cell's phototransduction function
-        resp = 0.0
-        if c.cell is not None:
-            resp = float(c.cell.function(int(R), int(G), int(B), wav))
+    for idx, c in enumerate(horizontal_cells):
+        c.set_stimulus(c.photoreceptor_cell.cell.latest)
+
+    for idx, c in enumerate(horizontal_cells):
+        before = c.stimulus
+        c.surround_inhibit()
         records.append({
             "idx": idx,
             "x_micron": float(c.x),
             "y_micron": float(c.y),
-            "pixel_x": int(px),
-            "pixel_y": int(py),
-            "cell_type": c.cell_type,
-            "subtype": c.subtype,
-            "response": resp
+            "stimulus_before": before,
+            "field_stimulus": c.field_stimulus,
+            "stimulus_after": c.stimulus
         })
+
+    with open('/Users/akhilreddy/IdeaProjects/beads/out/visual/horizontal.pkl', 'wb') as file:
+        # noinspection PyTypeChecker
+        pickle.dump(horizontal_cells, file)
 
     df = pd.DataFrame.from_records(records)
     df.to_csv(args.out_csv, index=False)
     print(f"Wrote CSV: {args.out_csv}  (n_cells = {len(df)})")
-
-    # overlay: plot image and scatter receptors (size ~ response)
-    plt.figure(figsize=(10, 6))
-    plt.imshow(img)
-    cones = df[df["cell_type"] == "cone"]
-    rods = df[df["cell_type"] == "rod"]
-    # scale sizes for readability
-    if df["response"].max() > 0:
-        max_resp = df["response"].max()
-    else:
-        max_resp = 1.0
-    size_scale = 4.0
-    plt.scatter(cones["pixel_x"], cones["pixel_y"],
-                s=(np.clip(cones["response"] / max_resp * size_scale, 2, size_scale)),
-                marker="o", alpha=0.7, linewidths=0.4, edgecolors='none')
-    plt.scatter(rods["pixel_x"], rods["pixel_y"],
-                s=(np.clip(rods["response"] / max_resp * size_scale, 2, size_scale)),
-                marker=".", alpha=0.6, linewidths=0.4, edgecolors='none')
-    plt.axis("off")
-    plt.title("Photoreceptor positions & response (size ∝ response)")
-    plt.tight_layout()
-    plt.savefig(args.out_png, dpi=150)
-    plt.close()
-    print(f"Wrote overlay PNG: {args.out_png}")
 
 
 test()

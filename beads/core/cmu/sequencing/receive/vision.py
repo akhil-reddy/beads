@@ -135,6 +135,7 @@ class Cone:
             self.lambda_max = 535  # nm
         elif self.subtype == 'L':
             self.lambda_max = 565  # nm
+        self.latest = None
 
     """
     Process an RGB pixel given a dominant wavelength (nm) of the stimulus.
@@ -159,7 +160,8 @@ class Cone:
             return 0.0
         # Weight by spectral sensitivity using the Govardovskii nomogram.
         spectral_weight = spectral_sensitivity(wavelength, self.lambda_max)
-        return (photoisom - self.threshold) * spectral_weight
+        self.latest = (photoisom - self.threshold) * spectral_weight
+        return self.latest
 
     """
     The signals from the cones are then combined to produce opponent channels for Push implementation
@@ -199,6 +201,7 @@ class Rod:
         self.lambda_max = 498  # nm typical for rods.
         self.n_iterations = n_iterations
         self.responses = []
+        self.latest = None
 
     """
     Process an RGB pixel for a rod by integrating over multiple iterations.
@@ -224,7 +227,9 @@ class Rod:
             spectral_weight = spectral_sensitivity(wavelength, self.lambda_max)
             self.responses.append((photoisom - self.threshold) * spectral_weight)
 
-        return sum(self.responses) / self.n_iterations
+        self.latest = sum(self.responses) / self.n_iterations
+
+        return self.latest
 
     def __repr__(self):
         return f"Rod [λ_max={self.lambda_max}nm, threshold={self.threshold}, iterations={self.n_iterations}]"
@@ -373,7 +378,7 @@ def rgb_to_wavelength(r, g, b):
     h, s, v = colorsys.rgb_to_hsv(r1, g1, b1)
     return 380.0 + h * (700.0 - 380.0)
 
-
+"""
 # Temporary code block to test these cells. Input and output should be through files (which can be used for the demo)
 def test():
     p = argparse.ArgumentParser()
@@ -393,7 +398,7 @@ def test():
     cells = initialize_photoreceptors(surface_radius=args.surface_radius,
                                       cone_threshold=args.cone_threshold,
                                       hex_size=args.hex_size)
-    with open('/Users/akhilreddy/IdeaProjects/beads/out/visual/receive_out.pkl', 'wb') as file:
+    with open('/Users/akhilreddy/IdeaProjects/beads/out/visual/photoreceptors.pkl', 'wb') as file:
         # noinspection PyTypeChecker
         pickle.dump(cells, file)
 
@@ -454,3 +459,4 @@ def test():
 
 
 test()
+"""
