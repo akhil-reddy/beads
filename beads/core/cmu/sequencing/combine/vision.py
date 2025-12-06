@@ -11,6 +11,7 @@ import pickle
 
 import numpy as np
 import pandas as pd
+from scipy.spatial import KDTree
 
 """
 After conversion, each unit / "drop" is combined with its neighbours based on similarity. The membrane
@@ -47,19 +48,15 @@ class Horizontal:
     }
     '''
 
-    def link(self, horizontal_cells, radius=10.0):  # radius is in microns
+    def link(self, neighbors):  # radius is in microns
         """
-        Link this horizontal cell to neighbours within a given radius.
+        Link this horizontal cell to neighbors within a given radius.
 
         Args:
-            horizontal_cells (list): List of all Horizontal cells.
-            radius (float): Maximum distance to consider a neighbour.
+            neighbors (list): List of all neighboring cells including self.
         """
-        for cell in horizontal_cells:
-            if cell is not self:
-                distance = math.hypot(self.x - cell.x, self.y - cell.y)
-                if distance <= radius:
-                    self.pointers.append(cell)
+        # Remove reference to self from the list of pointers.
+        self.pointers.append(neighbors[1:])
 
     def set_stimulus(self, stimulus):  # lambda in microns
         """
@@ -141,14 +138,19 @@ def initialize_horizontal_cells(photoreceptor_cells, inhibition_radius=10.0):
         cells: The horizontal cells
     """
     horizontal_cells = []
+    positions = np.asarray([], dtype=np.float32)
     for cell in photoreceptor_cells:
         if cell.cell_type == "cone":
             # In a full run, 'cell' would already have a stimulus attribute.
             horizontal_cells.append(Horizontal(cell.x, cell.y, cell))
+            positions = np.append(positions, np.array([cell.x, cell.y]), axis=0)
+
+    tree = KDTree(positions)
+    neighbors_idxs = tree.query_ball_point(positions, r=10.0, workers=-1)
 
     # Link each horizontal cell to its neighbours based on the inhibition_radius.
-    for h_cell in horizontal_cells:
-        h_cell.link(horizontal_cells, radius=inhibition_radius)
+    for h_cell, neigh_idxs in zip(horizontal_cells, neighbors_idxs):
+        h_cell.link([horizontal_cells[i] for i in neigh_idxs])
 
     # Attach the horizontal cell layer to the retina.
     return horizontal_cells

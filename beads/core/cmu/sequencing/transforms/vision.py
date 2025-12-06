@@ -1,5 +1,5 @@
 import numpy as np
-
+from scipy.spatial import kdtree
 
 def sigmoid(x, slope):
     """Compute a sigmoid function with the specified slope."""
@@ -182,9 +182,7 @@ def cluster_bipolar_cells_upto_distance(bipolar_cells, distance_threshold=50.0, 
         if not added:
             clusters.append([cell])
 
-    # Optionally, discard clusters smaller than min_cluster_size.
-    valid_clusters = [cluster for cluster in clusters if len(cluster) >= min_cluster_size]
-    return valid_clusters
+    return clusters
 
 
 ###############################################################################
