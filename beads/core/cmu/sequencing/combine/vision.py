@@ -12,6 +12,7 @@ import pickle
 import numpy as np
 import pandas as pd
 from scipy.spatial import KDTree
+from beads.core.cmu.sequencing.receive.vision import Cell
 
 """
 After conversion, each unit / "drop" is combined with its neighbours based on similarity. The membrane

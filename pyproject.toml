@@ -1,0 +1,13 @@
+[build-system]
+requires = ["setuptools>=61", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "beads"
+version = "0.1.0"
+description = "Beads project"
+dependencies = ["numpy", "scipy", "pillow"]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["beads*", "beads"]

@@ -382,7 +382,7 @@ def rgb_to_wavelength(r, g, b):
 # Temporary code block to test these cells. Input and output should be through files (which can be used for the demo)
 def test():
     p = argparse.ArgumentParser()
-    p.add_argument("--image", required=True, help="Input image (RGB) to sample")
+    p.add_argument("--image", default="/Users/akhilreddy/IdeaProjects/beads/data/visual/evening-frame.jpg")
     p.add_argument("--out_csv", default="/Users/akhilreddy/IdeaProjects/beads/out/visual/receive_out.csv")
     p.add_argument("--out_png", default="/Users/akhilreddy/IdeaProjects/beads/out/visual/receive_out.png")
     p.add_argument("--surface_radius", type=float, default=1248.0, help="Retina radius (microns)")
