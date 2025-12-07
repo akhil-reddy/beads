@@ -139,19 +139,21 @@ def initialize_horizontal_cells(photoreceptor_cells, inhibition_radius=10.0):
         cells: The horizontal cells
     """
     horizontal_cells = []
-    positions = np.asarray([], dtype=np.float32)
+    positions = []
     for cell in photoreceptor_cells:
         if cell.cell_type == "cone":
             # In a full run, 'cell' would already have a stimulus attribute.
             horizontal_cells.append(Horizontal(cell.x, cell.y, cell))
-            positions = np.append(positions, np.array([cell.x, cell.y]), axis=0)
+            positions.append([float(cell.x), float(cell.y)])
 
+    positions = np.asarray(positions, dtype=np.float32)
     tree = KDTree(positions)
-    neighbors_idxs = tree.query_ball_point(positions, r=10.0, workers=-1)
+    neighbors_idxs = tree.query_ball_point(positions, r=inhibition_radius, workers=-1)
 
-    # Link each horizontal cell to its neighbours based on the inhibition_radius.
-    for h_cell, neigh_idxs in zip(horizontal_cells, neighbors_idxs):
-        h_cell.link([horizontal_cells[i] for i in neigh_idxs])
+    # Link each horizontal to its neighbours (exclude self index)
+    for idx, neigh_idxs in enumerate(neighbors_idxs):
+        neighs = [horizontal_cells[i] for i in neigh_idxs if i != idx]
+        horizontal_cells[idx].link(neighs)
 
     # Attach the horizontal cell layer to the retina.
     return horizontal_cells
