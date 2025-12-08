@@ -398,9 +398,6 @@ def test():
     cells = initialize_photoreceptors(surface_radius=args.surface_radius,
                                       cone_threshold=args.cone_threshold,
                                       hex_size=args.hex_size)
-    with open('/Users/akhilreddy/IdeaProjects/beads/out/visual/photoreceptors.pkl', 'wb') as file:
-        # noinspection PyTypeChecker
-        pickle.dump(cells, file)
 
     # map microns coords centered at 0 -> pixel coords
     scale_x = W_img / (2.0 * args.surface_radius)
@@ -432,6 +429,10 @@ def test():
     df = pd.DataFrame.from_records(records)
     df.to_csv(args.out_csv, index=False)
     print(f"Wrote CSV: {args.out_csv}  (n_cells = {len(df)})")
+
+    with open('/Users/akhilreddy/IdeaProjects/beads/out/visual/photoreceptors.pkl', 'wb') as file:
+        # noinspection PyTypeChecker
+        pickle.dump(cells, file)
 
     # overlay: plot image and scatter receptors (size ~ response)
     plt.figure(figsize=(10, 6))

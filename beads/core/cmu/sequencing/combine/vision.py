@@ -57,7 +57,7 @@ class Horizontal:
             neighbors (list): List of all neighboring cells including self.
         """
         # Remove reference to self from the list of pointers.
-        self.pointers.append(neighbors[1:])
+        self.pointers = neighbors[1:]
 
     def set_stimulus(self, stimulus):  # lambda in microns
         """
