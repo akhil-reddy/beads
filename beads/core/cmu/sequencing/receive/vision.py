@@ -157,10 +157,11 @@ class Cone:
         photoisom = luminance_to_photoisomerizations(luminance, conversion_factor=100.0)
         # Apply a cone threshold: if below a threshold, the response is 0.
         if photoisom < self.threshold:
-            return 0.0
-        # Weight by spectral sensitivity using the Govardovskii nomogram.
-        spectral_weight = spectral_sensitivity(wavelength, self.lambda_max)
-        self.latest = (photoisom - self.threshold) * spectral_weight
+            self.latest = 0.0
+        else:
+            # Weight by spectral sensitivity using the Govardovskii nomogram.
+            spectral_weight = spectral_sensitivity(wavelength, self.lambda_max)
+            self.latest = (photoisom - self.threshold) * spectral_weight
         return self.latest
 
     """
@@ -429,6 +430,10 @@ def test():
     df = pd.DataFrame.from_records(records)
     df.to_csv(args.out_csv, index=False)
     print(f"Wrote CSV: {args.out_csv}  (n_cells = {len(df)})")
+
+    for c in cells:
+        if c.cell.latest is None:
+            print(c.cell_type)
 
     with open('/Users/akhilreddy/IdeaProjects/beads/out/visual/photoreceptors.pkl', 'wb') as file:
         # noinspection PyTypeChecker
