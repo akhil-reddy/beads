@@ -6,8 +6,10 @@ is analogous to a set of coloured rain drops separated by a membrane.
 
 """
 import argparse
+import gzip
 import math
 import pickle
+from typing import List
 
 import numpy as np
 import pandas as pd
@@ -25,13 +27,16 @@ interact constructively / destructively so that "context" spreads out horizontal
 
 
 class Horizontal:
-    def __init__(self, x, y, photoreceptor_cell=None):
+    def __init__(self, x, y, photoreceptor_cell=None, pointers=None):
         self.x = x
         self.y = y
         self.photoreceptor_cell = photoreceptor_cell
         self.stimulus = 0.0
         self.field_stimulus = 0.0
-        self.pointers = []  # List of neighbouring Horizontal cells
+        if pointers is not None:
+            self.pointers = pointers
+        else:
+            self.pointers = []  # List of neighbouring Horizontal cells
         self.latest = None
 
     '''
@@ -291,6 +296,52 @@ def initialize_cone_bipolar_cells(horizontal_cells, aii_amacrine_cells):
     return cone_bipolar_cells
 
 
+def serialize_horizontal_cells(horizontal_cells: List[object], out_path: str):
+    """
+    Serialize a non-recursive representation:
+      - For each Horizontal: store (x, y, stimulus, neighbors as indices).
+    This builds a map id->index and stores lists of integers instead of object refs.
+    """
+    # build index map for quick lookup
+    idx_map = {id(h): i for i, h in enumerate(horizontal_cells)}
+
+    serial = []
+    for i, h in enumerate(horizontal_cells):
+        # gather neighbor indices (skip neighbors not in this list)
+        neigh_idxs = []
+        for n in getattr(h, 'pointers', []):
+            if id(n) in idx_map:
+                neigh_idxs.append(idx_map[id(n)])
+        serial.append({
+            'x': float(getattr(h, 'x', 0.0)),
+            'y': float(getattr(h, 'y', 0.0)),
+            'stimulus': getattr(h, 'stimulus', 0.0),
+            'neighbors': neigh_idxs,
+            'photoreceptor_cell': float(getattr(h, 'photoreceptor_cell', None)),
+        })
+
+    with open(out_path, 'wb') as file:
+        # noinspection PyTypeChecker
+        pickle.dump(serial, file, protocol=pickle.HIGHEST_PROTOCOL)
+
+
+def deserialize_horizontal_cells(in_path: str):
+    """
+    Load the serialized structure and recreate Horizontal objects (with pointers).
+    Requires Horizontal to be available in scope.
+    """
+    with open(in_path, 'rb') as f:
+        data = pickle.load(f)
+
+    horizontals = [Horizontal(d['x'], d['y'], d.get('photoreceptor_cell', None)) for d in data]
+
+    for h, d in zip(horizontals, data):
+        h.pointers = [horizontals[i] for i in d.get('neighbors', [])]
+        h.stimulus = d.get('stimulus', 0.0)
+
+    return horizontals
+
+
 # TODO: Temporary code block to test these cells. Input and output should be through files (which can be used for the demo)
 def test():
     p = argparse.ArgumentParser()
@@ -318,9 +369,7 @@ def test():
             "stimulus_after": c.stimulus
         })
 
-    with open('/Users/akhilreddy/IdeaProjects/beads/out/visual/horizontal.pkl', 'wb') as file:
-        # noinspection PyTypeChecker
-        pickle.dump(horizontal_cells, file)
+    serialize_horizontal_cells(horizontal_cells,'/Users/akhilreddy/IdeaProjects/beads/out/visual/horizontal.pkl')
 
     df = pd.DataFrame.from_records(records)
     df.to_csv(args.out_csv, index=False)
