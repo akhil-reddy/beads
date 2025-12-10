@@ -317,7 +317,7 @@ def serialize_horizontal_cells(horizontal_cells: List[object], out_path: str):
             'y': float(getattr(h, 'y', 0.0)),
             'stimulus': getattr(h, 'stimulus', 0.0),
             'neighbors': neigh_idxs,
-            'photoreceptor_cell': float(getattr(h, 'photoreceptor_cell', None)),
+            'photoreceptor_cell': getattr(h, 'photoreceptor_cell', None),
         })
 
     with open(out_path, 'wb') as file:
