@@ -345,12 +345,33 @@ def deserialize_horizontal_cells(in_path: str):
 # TODO: Temporary code block to test these cells. Input and output should be through files (which can be used for the demo)
 def test():
     p = argparse.ArgumentParser()
-    p.add_argument("--out_csv", default="/Users/akhilreddy/IdeaProjects/beads/out/visual/combine_out.csv")
+    p.add_argument("--out_csv", default="/Users/akhilreddy/IdeaProjects/beads/out/visual/rod_bipolar_out.csv")
     args = p.parse_args()
 
     with open('/Users/akhilreddy/IdeaProjects/beads/out/visual/photoreceptors.pkl', 'rb') as file:
         photoreceptor_cells = pickle.load(file)
 
+    rod_bipolar_cells = initialize_rod_bipolar_cells(photoreceptor_cells)
+
+    records = []
+    for idx, c in enumerate(rod_bipolar_cells):
+        response = c.function(c.photoreceptor_cell.cell.latest)
+        records.append({
+            "idx": idx,
+            "x_micron": float(c.x),
+            "y_micron": float(c.y),
+            "response": response
+        })
+
+    df = pd.DataFrame.from_records(records)
+    df.to_csv(args.out_csv, index=False)
+    print(f"Wrote CSV: {args.out_csv}  (n_cells = {len(df)})")
+
+    with open('/Users/akhilreddy/IdeaProjects/beads/out/visual/rod_bipolar.pkl', 'wb') as file:
+        # noinspection PyTypeChecker
+        pickle.dump(rod_bipolar_cells, file)
+
+    """
     horizontal_cells = initialize_horizontal_cells(photoreceptor_cells)
 
     records = []
@@ -374,6 +395,7 @@ def test():
     df = pd.DataFrame.from_records(records)
     df.to_csv(args.out_csv, index=False)
     print(f"Wrote CSV: {args.out_csv}  (n_cells = {len(df)})")
+    """
 
 
 test()

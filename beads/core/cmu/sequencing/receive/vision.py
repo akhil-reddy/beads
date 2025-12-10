@@ -431,10 +431,6 @@ def test():
     df.to_csv(args.out_csv, index=False)
     print(f"Wrote CSV: {args.out_csv}  (n_cells = {len(df)})")
 
-    for c in cells:
-        if c.cell.latest is None:
-            print(c.cell_type)
-
     with open('/Users/akhilreddy/IdeaProjects/beads/out/visual/photoreceptors.pkl', 'wb') as file:
         # noinspection PyTypeChecker
         pickle.dump(cells, file)
