@@ -379,7 +379,7 @@ def rgb_to_wavelength(r, g, b):
     h, s, v = colorsys.rgb_to_hsv(r1, g1, b1)
     return 380.0 + h * (700.0 - 380.0)
 
-
+"""
 # Temporary code block to test these cells. Input and output should be through files (which can be used for the demo)
 def test():
     p = argparse.ArgumentParser()
@@ -459,5 +459,5 @@ def test():
     plt.close()
     print(f"Wrote overlay PNG: {args.out_png}")
 
-
 test()
+"""
