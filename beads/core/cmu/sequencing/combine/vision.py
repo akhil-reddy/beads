@@ -354,14 +354,16 @@ def test():
     rod_bipolar_cells = initialize_rod_bipolar_cells(photoreceptor_cells)
 
     records = []
-    for idx, c in enumerate(rod_bipolar_cells):
-        response = c.function(c.photoreceptor_cell.cell.latest)
+    idx = 0
+    for r, p in zip(rod_bipolar_cells, photoreceptor_cells):
+        response = r.function(p.cell.latest)
         records.append({
             "idx": idx,
-            "x_micron": float(c.x),
-            "y_micron": float(c.y),
+            "x_micron": float(r.x),
+            "y_micron": float(r.y),
             "response": response
         })
+        idx += 1
 
     df = pd.DataFrame.from_records(records)
     df.to_csv(args.out_csv, index=False)
