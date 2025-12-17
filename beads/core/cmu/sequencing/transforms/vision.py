@@ -1,5 +1,10 @@
+import argparse
+import pickle
+
 import numpy as np
+import pandas as pd
 from scipy.spatial import kdtree
+from beads.core.cmu.sequencing.combine.vision import Bipolar
 
 def sigmoid(x, slope):
     """Compute a sigmoid function with the specified slope."""
@@ -335,3 +340,35 @@ def initialize_starburst_amacrine_cells(cone_bipolar_cells, distance_threshold=5
     return starburst_cells
 
 # TODO: Temporary code block to test these cells. Input and output should be through files (which can be used for the demo)
+def test():
+    p = argparse.ArgumentParser()
+    p.add_argument("--out_csv", default="/Users/akhilreddy/IdeaProjects/beads/out/visual/aii_amacrine_out.csv")
+    args = p.parse_args()
+
+    with open('/Users/akhilreddy/IdeaProjects/beads/out/visual/rod_bipolar.pkl', 'rb') as file:
+        rod_bipolar_cells = pickle.load(file)
+
+    aii_amacrine_cells = initialize_aii_amacrine_cells(rod_bipolar_cells)
+
+    records = []
+    idx = 0
+    for a, r in zip(aii_amacrine_cells, rod_bipolar_cells):
+        response = a.function(r.get_output())
+        records.append({
+            "idx": idx,
+            "V": float(a.V),
+            "electrical_output": response[0],
+            "inhibitory_output": response[1],
+        })
+        idx += 1
+
+    df = pd.DataFrame.from_records(records)
+    df.to_csv(args.out_csv, index=False)
+    print(f"Wrote CSV: {args.out_csv}  (n_cells = {len(df)})")
+
+    with open('/Users/akhilreddy/IdeaProjects/beads/out/visual/aii_amacrine.pkl', 'wb') as file:
+        # noinspection PyTypeChecker
+        pickle.dump(rod_bipolar_cells, file)
+
+
+test()
