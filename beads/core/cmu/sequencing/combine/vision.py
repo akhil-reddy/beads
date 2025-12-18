@@ -345,13 +345,15 @@ def deserialize_horizontal_cells(in_path: str):
 # TODO: Temporary code block to test these cells. Input and output should be through files (which can be used for the demo)
 def test():
     p = argparse.ArgumentParser()
-    p.add_argument("--out_csv", default="/Users/akhilreddy/IdeaProjects/beads/out/visual/rod_bipolar_out.csv")
+    p.add_argument("--out_csv", default="/Users/akhilreddy/IdeaProjects/beads/out/visual/cone_bipolar_out.csv")
     args = p.parse_args()
 
-    with open('/Users/akhilreddy/IdeaProjects/beads/out/visual/photoreceptors.pkl', 'rb') as file:
-        photoreceptor_cells = pickle.load(file)
+    with open('/Users/akhilreddy/IdeaProjects/beads/out/visual/horizontal.pkl', 'rb') as file:
+        horizontal_cells = pickle.load(file)
+    with open('/Users/akhilreddy/IdeaProjects/beads/out/visual/aii_amacrine.pkl', 'rb') as file:
+        aii_amacrine_cells = pickle.load(file)
 
-    rod_bipolar_cells = initialize_rod_bipolar_cells(photoreceptor_cells)
+    cone_bipolar_cells = initialize_cone_bipolar_cells(horizontal_cells, aii_amacrine_cells)
 
     records = []
     idx = 0
@@ -369,17 +371,44 @@ def test():
     df.to_csv(args.out_csv, index=False)
     print(f"Wrote CSV: {args.out_csv}  (n_cells = {len(df)})")
 
+    with open('/Users/akhilreddy/IdeaProjects/beads/out/visual/cone_bipolar.pkl', 'wb') as file:
+        # noinspection PyTypeChecker
+        pickle.dump(cone_bipolar_cells, file)
+
+
+    """"
+    with open('/Users/akhilreddy/IdeaProjects/beads/out/visual/photoreceptors.pkl', 'rb') as file:
+        photoreceptor_cells = pickle.load(file)
+    
+    rod_bipolar_cells = initialize_rod_bipolar_cells(photoreceptor_cells)
+    
+    records = []
+    idx = 0
+    for r, p in zip(rod_bipolar_cells, photoreceptor_cells):
+        response = r.function(p.cell.latest)
+        records.append({
+            "idx": idx,
+            "x_micron": float(r.x),
+            "y_micron": float(r.y),
+            "response": response
+        })
+        idx += 1
+    
+    df = pd.DataFrame.from_records(records)
+    df.to_csv(args.out_csv, index=False)
+    print(f"Wrote CSV: {args.out_csv}  (n_cells = {len(df)})")
+    
     with open('/Users/akhilreddy/IdeaProjects/beads/out/visual/rod_bipolar.pkl', 'wb') as file:
         # noinspection PyTypeChecker
         pickle.dump(rod_bipolar_cells, file)
-
-    """
+    
+    
     horizontal_cells = initialize_horizontal_cells(photoreceptor_cells)
-
+    
     records = []
     for idx, c in enumerate(horizontal_cells):
         c.set_stimulus(c.photoreceptor_cell.cell.latest)
-
+    
     for idx, c in enumerate(horizontal_cells):
         before = c.stimulus
         c.surround_inhibit()
@@ -387,13 +416,14 @@ def test():
             "idx": idx,
             "x_micron": float(c.x),
             "y_micron": float(c.y),
+            "subtype": c.photoreceptor_cell.subtype,
             "stimulus_before": before,
             "field_stimulus": c.field_stimulus,
             "stimulus_after": c.stimulus
         })
-
+    
     serialize_horizontal_cells(horizontal_cells,'/Users/akhilreddy/IdeaProjects/beads/out/visual/horizontal.pkl')
-
+    
     df = pd.DataFrame.from_records(records)
     df.to_csv(args.out_csv, index=False)
     print(f"Wrote CSV: {args.out_csv}  (n_cells = {len(df)})")
