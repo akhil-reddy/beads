@@ -27,7 +27,7 @@ interact constructively / destructively so that "context" spreads out horizontal
 
 
 class Horizontal:
-    def __init__(self, x, y, photoreceptor_cell=None, pointers=None):
+    def __init__(self, x, y, photoreceptor_cell=None, pointers=None, latest=None):
         self.x = x
         self.y = y
         self.photoreceptor_cell = photoreceptor_cell
@@ -37,7 +37,7 @@ class Horizontal:
             self.pointers = pointers
         else:
             self.pointers = []  # List of neighbouring Horizontal cells
-        self.latest = None
+        self.latest = latest
 
     '''
     In a traditional ML sense, this operation is equivalent to channel preprocessing / convolution in a
@@ -310,7 +310,7 @@ def serialize_horizontal_cells(horizontal_cells: List[object], out_path: str):
         serial.append({
             'x': float(getattr(h, 'x', 0.0)),
             'y': float(getattr(h, 'y', 0.0)),
-            'stimulus': getattr(h, 'stimulus', 0.0),
+            'latest': getattr(h, 'latest', 0.0),
             'neighbors': neigh_idxs,
             'photoreceptor_cell': getattr(h, 'photoreceptor_cell', None),
         })
@@ -328,11 +328,7 @@ def deserialize_horizontal_cells(in_path: str):
     with open(in_path, 'rb') as f:
         data = pickle.load(f)
 
-    horizontals = [Horizontal(d['x'], d['y'], d.get('photoreceptor_cell', None)) for d in data]
-
-    for h, d in zip(horizontals, data):
-        h.pointers = [horizontals[i] for i in d.get('neighbors', [])]
-        h.stimulus = d.get('stimulus', 0.0)
+    horizontals = [Horizontal(d['x'], d['y'], d.get('photoreceptor_cell', None), d.get("latest")) for d in data]
 
     return horizontals
 
