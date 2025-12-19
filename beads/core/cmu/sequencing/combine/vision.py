@@ -273,27 +273,22 @@ def initialize_cone_bipolar_cells(horizontal_cells, aii_amacrine_cells):
     Returns:
         cone_bipolar_cells: The cone bipolar cells
     """
+    zipped_cells = []
     cone_bipolar_cells = []
 
     for h_cell in horizontal_cells:
         # Create an ON bipolar cell with typical parameter values
         bipolar = Bipolar(h_cell.x, h_cell.y, cell_type='ON', threshold=0.5, tau=0.07, gain=3.0, saturation=1.0)
+        zipped_cells.append((bipolar, h_cell))
         cone_bipolar_cells.append(bipolar)
 
-        # Create an OFF bipolar cell with typical parameter values
-        bipolar = Bipolar(h_cell.x, h_cell.y, cell_type='OFF', threshold=0.5, tau=0.07, gain=3.0, saturation=1.0)
-        cone_bipolar_cells.append(bipolar)
-
-    for cell in aii_amacrine_cells:
+    for aii_cell in aii_amacrine_cells:
         # Create an ON bipolar cell for AII amacrine
-        bipolar = Bipolar(cell.x, cell.y, cell_type='ON', threshold=0.5, tau=0.07, gain=3.0, saturation=1.0)
+        bipolar = Bipolar(aii_cell.x, aii_cell.y, cell_type='ON', threshold=0.5, tau=0.07, gain=3.0, saturation=1.0)
+        zipped_cells.append((bipolar, aii_cell))
         cone_bipolar_cells.append(bipolar)
 
-        # Create an OFF bipolar cell with typical parameter values
-        bipolar = Bipolar(cell.x, cell.y, cell_type='OFF', threshold=0.5, tau=0.07, gain=3.0, saturation=1.0)
-        cone_bipolar_cells.append(bipolar)
-
-    return cone_bipolar_cells
+    return zipped_cells, cone_bipolar_cells
 
 
 def serialize_horizontal_cells(horizontal_cells: List[object], out_path: str):
@@ -348,21 +343,20 @@ def test():
     p.add_argument("--out_csv", default="/Users/akhilreddy/IdeaProjects/beads/out/visual/cone_bipolar_out.csv")
     args = p.parse_args()
 
-    with open('/Users/akhilreddy/IdeaProjects/beads/out/visual/horizontal.pkl', 'rb') as file:
-        horizontal_cells = pickle.load(file)
+    horizontal_cells = deserialize_horizontal_cells('/Users/akhilreddy/IdeaProjects/beads/out/visual/horizontal.pkl')
     with open('/Users/akhilreddy/IdeaProjects/beads/out/visual/aii_amacrine.pkl', 'rb') as file:
         aii_amacrine_cells = pickle.load(file)
 
-    cone_bipolar_cells = initialize_cone_bipolar_cells(horizontal_cells, aii_amacrine_cells)
+    zipped_cells, cone_bipolar_cells = initialize_cone_bipolar_cells(horizontal_cells, aii_amacrine_cells)
 
     records = []
     idx = 0
-    for r, p in zip(rod_bipolar_cells, photoreceptor_cells):
-        response = r.function(p.cell.latest)
+    for cb, c in zipped_cells:
+        response = cb.function(c.latest)
         records.append({
             "idx": idx,
-            "x_micron": float(r.x),
-            "y_micron": float(r.y),
+            "x_micron": float(cb.x),
+            "y_micron": float(cb.y),
             "response": response
         })
         idx += 1
@@ -419,7 +413,7 @@ def test():
             "subtype": c.photoreceptor_cell.subtype,
             "stimulus_before": before,
             "field_stimulus": c.field_stimulus,
-            "stimulus_after": c.stimulus
+            "stimulus_after": c.latest
         })
     
     serialize_horizontal_cells(horizontal_cells,'/Users/akhilreddy/IdeaProjects/beads/out/visual/horizontal.pkl')

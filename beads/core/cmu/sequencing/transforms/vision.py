@@ -84,6 +84,10 @@ class AIIAmacrine:
             sigmoid_slope (float): Slope of the sigmoidal nonlinearity.
         """
         self.bipolar_cell = bipolar_cell
+        if isinstance(bipolar_cell, Bipolar):
+            self.x = bipolar_cell.x
+            self.y = bipolar_cell.y
+
         self.tau = tau
         self.V_rest = V_rest
         self.V_threshold = V_threshold
@@ -371,4 +375,4 @@ def test():
         pickle.dump(rod_bipolar_cells, file)
 
 
-test()
+# test()
