@@ -90,9 +90,9 @@ class AIIAmacrine:
         """
         self.latest = None
         self.bipolar_cell = bipolar_cell
-        #if isinstance(bipolar_cell, Bipolar):
-        #    self.x = bipolar_cell.x
-        #    self.y = bipolar_cell.y
+        if isinstance(bipolar_cell, Bipolar):
+            self.x = bipolar_cell.x
+            self.y = bipolar_cell.y
 
         self.tau = tau
         self.V_rest = V_rest
@@ -404,18 +404,24 @@ def deserialize_horizontal_cells(in_path: str):
     return horizontals
 
 
+class RemappingUnpickler(pickle.Unpickler):
+    def find_class(self, module, name):
+        # remap classes pickled under "__main__" to the current module path
+        if module == "__main__" and name == "AIIAmacrine":
+            module = "beads.core.cmu.sequencing.transforms.vision"
+        return super().find_class(module, name)
+
+
 # TODO: Temporary code block to test these cells. Input and output should be through files (which can be used for the demo)
 def test():
     p = argparse.ArgumentParser()
-    p.add_argument("--out_csv", default="/Users/akhilreddy/IdeaProjects/beads/out/visual/aii_amacrine_out.csv")
+    p.add_argument("--out_csv", default="/Users/akhilreddy/IdeaProjects/beads/out/visual/cone_bipolar_out.csv")
     args = p.parse_args()
-
-    """
 
     # horizontal_cells = deserialize_horizontal_cells('/Users/akhilreddy/IdeaProjects/beads/out/visual/horizontal.pkl')
     logger.info("Loaded H Objects")
     with open('/Users/akhilreddy/IdeaProjects/beads/out/visual/aii_amacrine.pkl', 'rb') as file:
-        aii_amacrine_cells = pickle.load(file)
+        aii_amacrine_cells = RemappingUnpickler(file).load()
     logger.info("Loaded A Objects")
 
     zipped_cells, cone_bipolar_cells = initialize_cone_bipolar_cells([], aii_amacrine_cells)
@@ -432,15 +438,15 @@ def test():
         })
         idx += 1
 
-    df = pd.DataFrame.from_records(records)
-    df.to_csv(args.out_csv, index=False)
-    print(f"Wrote CSV: {args.out_csv}  (n_cells = {len(df)})")
-
     with open('/Users/akhilreddy/IdeaProjects/beads/out/visual/cone_bipolar.pkl', 'wb') as file:
         # noinspection PyTypeChecker
         pickle.dump(cone_bipolar_cells, file)
 
-    """
+    df = pd.DataFrame.from_records(records)
+    df.to_csv(args.out_csv, index=False)
+    print(f"Wrote CSV: {args.out_csv}  (n_cells = {len(df)})")
+
+    """"
 
     with open('/Users/akhilreddy/IdeaProjects/beads/out/visual/rod_bipolar.pkl', 'rb') as file:
         rod_bipolar_cells = pickle.load(file)
@@ -459,14 +465,15 @@ def test():
         })
         idx += 1
 
-    df = pd.DataFrame.from_records(records)
-    df.to_csv(args.out_csv, index=False)
-    print(f"Wrote CSV: {args.out_csv}  (n_cells = {len(df)})")
-
     with open('/Users/akhilreddy/IdeaProjects/beads/out/visual/aii_amacrine.pkl', 'wb') as file:
         # noinspection PyTypeChecker
         pickle.dump(aii_amacrine_cells, file)
+        
+    df = pd.DataFrame.from_records(records)
+    df.to_csv(args.out_csv, index=False)
+    print(f"Wrote CSV: {args.out_csv}  (n_cells = {len(df)})")
+    """
 
 
-
-test()
+if __name__ == "__main__":
+    test()

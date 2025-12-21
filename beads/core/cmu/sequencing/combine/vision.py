@@ -289,13 +289,13 @@ def serialize_horizontal_cells(horizontal_cells: List[object], out_path: str):
         # noinspection PyTypeChecker
         pickle.dump(serial, file, protocol=pickle.HIGHEST_PROTOCOL)
 
+
 # TODO: Temporary code block to test these cells. Input and output should be through files (which can be used for the demo)
 def test():
     p = argparse.ArgumentParser()
     p.add_argument("--out_csv", default="/Users/akhilreddy/IdeaProjects/beads/out/visual/cone_bipolar_out.csv")
     args = p.parse_args()
 
-    """"
     with open('/Users/akhilreddy/IdeaProjects/beads/out/visual/photoreceptors.pkl', 'rb') as file:
         photoreceptor_cells = pickle.load(file)
     
@@ -313,13 +313,15 @@ def test():
         })
         idx += 1
     
-    df = pd.DataFrame.from_records(records)
-    df.to_csv(args.out_csv, index=False)
-    print(f"Wrote CSV: {args.out_csv}  (n_cells = {len(df)})")
-    
     with open('/Users/akhilreddy/IdeaProjects/beads/out/visual/rod_bipolar.pkl', 'wb') as file:
         # noinspection PyTypeChecker
         pickle.dump(rod_bipolar_cells, file)
+
+    df = pd.DataFrame.from_records(records)
+    df.to_csv(args.out_csv, index=False)
+    print(f"Wrote CSV: {args.out_csv}  (n_cells = {len(df)})")
+
+    """
     
     
     horizontal_cells = initialize_horizontal_cells(photoreceptor_cells)
@@ -346,7 +348,10 @@ def test():
     df = pd.DataFrame.from_records(records)
     df.to_csv(args.out_csv, index=False)
     print(f"Wrote CSV: {args.out_csv}  (n_cells = {len(df)})")
+    
     """
 
 
-# test()
+if __name__ == "__main__":
+    # test()
+    pass

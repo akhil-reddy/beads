@@ -379,7 +379,7 @@ def rgb_to_wavelength(r, g, b):
     h, s, v = colorsys.rgb_to_hsv(r1, g1, b1)
     return 380.0 + h * (700.0 - 380.0)
 
-"""
+
 # Temporary code block to test these cells. Input and output should be through files (which can be used for the demo)
 def test():
     p = argparse.ArgumentParser()
@@ -427,13 +427,13 @@ def test():
             "response": resp
         })
 
-    df = pd.DataFrame.from_records(records)
-    df.to_csv(args.out_csv, index=False)
-    print(f"Wrote CSV: {args.out_csv}  (n_cells = {len(df)})")
-
     with open('/Users/akhilreddy/IdeaProjects/beads/out/visual/photoreceptors.pkl', 'wb') as file:
         # noinspection PyTypeChecker
         pickle.dump(cells, file)
+
+    df = pd.DataFrame.from_records(records)
+    df.to_csv(args.out_csv, index=False)
+    print(f"Wrote CSV: {args.out_csv}  (n_cells = {len(df)})")
 
     # overlay: plot image and scatter receptors (size ~ response)
     plt.figure(figsize=(10, 6))
@@ -459,5 +459,7 @@ def test():
     plt.close()
     print(f"Wrote overlay PNG: {args.out_png}")
 
-test()
-"""
+
+if __name__ == "__main__":
+    # test()
+    pass
