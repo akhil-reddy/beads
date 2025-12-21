@@ -418,13 +418,13 @@ def test():
     p.add_argument("--out_csv", default="/Users/akhilreddy/IdeaProjects/beads/out/visual/cone_bipolar_out.csv")
     args = p.parse_args()
 
-    # horizontal_cells = deserialize_horizontal_cells('/Users/akhilreddy/IdeaProjects/beads/out/visual/horizontal.pkl')
+    horizontal_cells = deserialize_horizontal_cells('/Users/akhilreddy/IdeaProjects/beads/out/visual/horizontal.pkl')
     logger.info("Loaded H Objects")
     with open('/Users/akhilreddy/IdeaProjects/beads/out/visual/aii_amacrine.pkl', 'rb') as file:
         aii_amacrine_cells = RemappingUnpickler(file).load()
     logger.info("Loaded A Objects")
 
-    zipped_cells, cone_bipolar_cells = initialize_cone_bipolar_cells([], aii_amacrine_cells)
+    zipped_cells, cone_bipolar_cells = initialize_cone_bipolar_cells(horizontal_cells, aii_amacrine_cells)
 
     records = []
     idx = 0
