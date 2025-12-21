@@ -4,7 +4,7 @@ import pickle
 import numpy as np
 import pandas as pd
 from scipy.spatial import kdtree
-from beads.core.cmu.sequencing.combine.vision import Bipolar
+# from beads.core.cmu.sequencing.combine.vision import Bipolar
 
 def sigmoid(x, slope):
     """Compute a sigmoid function with the specified slope."""
@@ -83,6 +83,7 @@ class AIIAmacrine:
             g_inhib_max (float): Maximum inhibitory output for glycinergic transmission.
             sigmoid_slope (float): Slope of the sigmoidal nonlinearity.
         """
+        self.latest = None
         self.bipolar_cell = bipolar_cell
         if isinstance(bipolar_cell, Bipolar):
             self.x = bipolar_cell.x
@@ -119,6 +120,8 @@ class AIIAmacrine:
 
         # Inhibitory output (glycinergic release, using a steep sigmoid).
         inhibitory_output = self.g_inhib_max * sigmoid(self.V - self.V_threshold, self.sigmoid_slope)
+
+        self.latest = electrical_output
 
         return electrical_output, inhibitory_output
 
@@ -372,7 +375,7 @@ def test():
 
     with open('/Users/akhilreddy/IdeaProjects/beads/out/visual/aii_amacrine.pkl', 'wb') as file:
         # noinspection PyTypeChecker
-        pickle.dump(rod_bipolar_cells, file)
+        pickle.dump(aii_amacrine_cells, file)
 
 
 # test()

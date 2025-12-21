@@ -7,6 +7,7 @@ is analogous to a set of coloured rain drops separated by a membrane.
 """
 import argparse
 import gzip
+import logging
 import math
 import pickle
 from typing import List
@@ -15,6 +16,9 @@ import numpy as np
 import pandas as pd
 from scipy.spatial import KDTree
 from beads.core.cmu.sequencing.receive.vision import Cell
+from beads.core.cmu.sequencing.transforms.vision import AIIAmacrine, GenericAmacrine
+
+logger = logging.getLogger(__name__)
 
 """
 After conversion, each unit / "drop" is combined with its neighbours based on similarity. The membrane
@@ -282,11 +286,15 @@ def initialize_cone_bipolar_cells(horizontal_cells, aii_amacrine_cells):
         zipped_cells.append((bipolar, h_cell))
         cone_bipolar_cells.append(bipolar)
 
+    logger.info("Finished Horizontal section")
+
     for aii_cell in aii_amacrine_cells:
         # Create an ON bipolar cell for AII amacrine
         bipolar = Bipolar(aii_cell.x, aii_cell.y, cell_type='ON', threshold=0.5, tau=0.07, gain=3.0, saturation=1.0)
         zipped_cells.append((bipolar, aii_cell))
         cone_bipolar_cells.append(bipolar)
+
+    logger.info("Finished AII section")
 
     return zipped_cells, cone_bipolar_cells
 
@@ -328,7 +336,7 @@ def deserialize_horizontal_cells(in_path: str):
     with open(in_path, 'rb') as f:
         data = pickle.load(f)
 
-    horizontals = [Horizontal(d['x'], d['y'], d.get('photoreceptor_cell', None), d.get("latest")) for d in data]
+    horizontals = [Horizontal(d['x'], d['y'], photoreceptor_cell=d.get('photoreceptor_cell', None), latest=d.get("latest")) for d in data]
 
     return horizontals
 
@@ -336,12 +344,14 @@ def deserialize_horizontal_cells(in_path: str):
 # TODO: Temporary code block to test these cells. Input and output should be through files (which can be used for the demo)
 def test():
     p = argparse.ArgumentParser()
-    p.add_argument("--out_csv", default="/Users/akhilreddy/IdeaProjects/beads/out/visual/cone_bipolar_out.csv")
+    p.add_argument("--out_csv", default="/Users/akhilreddy/IdeaProjects/beads/out/visual/horizontal_out.csv")
     args = p.parse_args()
 
     horizontal_cells = deserialize_horizontal_cells('/Users/akhilreddy/IdeaProjects/beads/out/visual/horizontal.pkl')
+    logger.info("Loaded H Objects")
     with open('/Users/akhilreddy/IdeaProjects/beads/out/visual/aii_amacrine.pkl', 'rb') as file:
         aii_amacrine_cells = pickle.load(file)
+    logger.info("Loaded A Objects")
 
     zipped_cells, cone_bipolar_cells = initialize_cone_bipolar_cells(horizontal_cells, aii_amacrine_cells)
 
@@ -364,7 +374,6 @@ def test():
     with open('/Users/akhilreddy/IdeaProjects/beads/out/visual/cone_bipolar.pkl', 'wb') as file:
         # noinspection PyTypeChecker
         pickle.dump(cone_bipolar_cells, file)
-
 
     """"
     with open('/Users/akhilreddy/IdeaProjects/beads/out/visual/photoreceptors.pkl', 'rb') as file:
