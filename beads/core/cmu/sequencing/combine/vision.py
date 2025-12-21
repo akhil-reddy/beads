@@ -16,9 +16,6 @@ import numpy as np
 import pandas as pd
 from scipy.spatial import KDTree
 from beads.core.cmu.sequencing.receive.vision import Cell
-from beads.core.cmu.sequencing.transforms.vision import AIIAmacrine, GenericAmacrine
-
-logger = logging.getLogger(__name__)
 
 """
 After conversion, each unit / "drop" is combined with its neighbours based on similarity. The membrane
@@ -264,41 +261,6 @@ def initialize_rod_bipolar_cells(photoreceptor_cells):
     return rod_bipolar_cells
 
 
-def initialize_cone_bipolar_cells(horizontal_cells, aii_amacrine_cells):
-    """
-    Given a retina object that contains a list of horizontal cells with already computed inhibitory responses,
-    create a bipolar cell layer.
-
-    Args:
-        horizontal_cells: A list of horizontal cell objects, each with a computed attribute `inhibited_stimulus`
-        (range normalized to [0, 1]).
-        aii_amacrine_cells: A list of AII amacrine cells.
-
-    Returns:
-        cone_bipolar_cells: The cone bipolar cells
-    """
-    zipped_cells = []
-    cone_bipolar_cells = []
-
-    for h_cell in horizontal_cells:
-        # Create an ON bipolar cell with typical parameter values
-        bipolar = Bipolar(h_cell.x, h_cell.y, cell_type='ON', threshold=0.5, tau=0.07, gain=3.0, saturation=1.0)
-        zipped_cells.append((bipolar, h_cell))
-        cone_bipolar_cells.append(bipolar)
-
-    logger.info("Finished Horizontal section")
-
-    for aii_cell in aii_amacrine_cells:
-        # Create an ON bipolar cell for AII amacrine
-        bipolar = Bipolar(aii_cell.x, aii_cell.y, cell_type='ON', threshold=0.5, tau=0.07, gain=3.0, saturation=1.0)
-        zipped_cells.append((bipolar, aii_cell))
-        cone_bipolar_cells.append(bipolar)
-
-    logger.info("Finished AII section")
-
-    return zipped_cells, cone_bipolar_cells
-
-
 def serialize_horizontal_cells(horizontal_cells: List[object], out_path: str):
     """
     Serialize a non-recursive representation:
@@ -327,53 +289,11 @@ def serialize_horizontal_cells(horizontal_cells: List[object], out_path: str):
         # noinspection PyTypeChecker
         pickle.dump(serial, file, protocol=pickle.HIGHEST_PROTOCOL)
 
-
-def deserialize_horizontal_cells(in_path: str):
-    """
-    Load the serialized structure and recreate Horizontal objects (with pointers).
-    Requires Horizontal to be available in scope.
-    """
-    with open(in_path, 'rb') as f:
-        data = pickle.load(f)
-
-    horizontals = [Horizontal(d['x'], d['y'], photoreceptor_cell=d.get('photoreceptor_cell', None), latest=d.get("latest")) for d in data]
-
-    return horizontals
-
-
 # TODO: Temporary code block to test these cells. Input and output should be through files (which can be used for the demo)
 def test():
     p = argparse.ArgumentParser()
-    p.add_argument("--out_csv", default="/Users/akhilreddy/IdeaProjects/beads/out/visual/horizontal_out.csv")
+    p.add_argument("--out_csv", default="/Users/akhilreddy/IdeaProjects/beads/out/visual/cone_bipolar_out.csv")
     args = p.parse_args()
-
-    horizontal_cells = deserialize_horizontal_cells('/Users/akhilreddy/IdeaProjects/beads/out/visual/horizontal.pkl')
-    logger.info("Loaded H Objects")
-    with open('/Users/akhilreddy/IdeaProjects/beads/out/visual/aii_amacrine.pkl', 'rb') as file:
-        aii_amacrine_cells = pickle.load(file)
-    logger.info("Loaded A Objects")
-
-    zipped_cells, cone_bipolar_cells = initialize_cone_bipolar_cells(horizontal_cells, aii_amacrine_cells)
-
-    records = []
-    idx = 0
-    for cb, c in zipped_cells:
-        response = cb.function(c.latest)
-        records.append({
-            "idx": idx,
-            "x_micron": float(cb.x),
-            "y_micron": float(cb.y),
-            "response": response
-        })
-        idx += 1
-
-    df = pd.DataFrame.from_records(records)
-    df.to_csv(args.out_csv, index=False)
-    print(f"Wrote CSV: {args.out_csv}  (n_cells = {len(df)})")
-
-    with open('/Users/akhilreddy/IdeaProjects/beads/out/visual/cone_bipolar.pkl', 'wb') as file:
-        # noinspection PyTypeChecker
-        pickle.dump(cone_bipolar_cells, file)
 
     """"
     with open('/Users/akhilreddy/IdeaProjects/beads/out/visual/photoreceptors.pkl', 'rb') as file:
@@ -429,4 +349,4 @@ def test():
     """
 
 
-test()
+# test()

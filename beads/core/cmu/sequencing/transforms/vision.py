@@ -1,10 +1,15 @@
 import argparse
+import logging
 import pickle
 
 import numpy as np
 import pandas as pd
 from scipy.spatial import kdtree
-# from beads.core.cmu.sequencing.combine.vision import Bipolar
+
+from beads.core.cmu.sequencing.combine.vision import Bipolar, Horizontal
+
+logger = logging.getLogger(__name__)
+
 
 def sigmoid(x, slope):
     """Compute a sigmoid function with the specified slope."""
@@ -85,9 +90,9 @@ class AIIAmacrine:
         """
         self.latest = None
         self.bipolar_cell = bipolar_cell
-        if isinstance(bipolar_cell, Bipolar):
-            self.x = bipolar_cell.x
-            self.y = bipolar_cell.y
+        #if isinstance(bipolar_cell, Bipolar):
+        #    self.x = bipolar_cell.x
+        #    self.y = bipolar_cell.y
 
         self.tau = tau
         self.V_rest = V_rest
@@ -158,7 +163,8 @@ def unit_vector(angle):
     return np.array([np.cos(angle), np.sin(angle)])
 
 
-def cluster_bipolar_cells_upto_distance(bipolar_cells, distance_threshold=50.0, min_cluster_size=0):  # distance is in microns
+def cluster_bipolar_cells_upto_distance(bipolar_cells, distance_threshold=50.0,
+                                        min_cluster_size=0):  # distance is in microns
     """
     Group bipolar cells into clusters based on their (x, y) positions.
 
@@ -202,7 +208,8 @@ def cluster_bipolar_cells_upto_distance(bipolar_cells, distance_threshold=50.0, 
 ###############################################################################
 
 class StarburstAmacrine:
-    def __init__(self, bipolar_cells, lambda_r=50.0, nonlin_gain=10.0, nonlin_thresh=0.2, tau=0.05):  # lambda is in microns
+    def __init__(self, bipolar_cells, lambda_r=50.0, nonlin_gain=10.0, nonlin_thresh=0.2,
+                 tau=0.05):  # lambda is in microns
         """
         Starburst amacrine cell model that integrates inputs from a radially defined focus area.
 
@@ -256,10 +263,10 @@ class StarburstAmacrine:
             unit_r_vec = r_vec / r
             # Project onto 4 cardinal directions.
             proj = np.array([
-                max(weight * unit_r_vec[0], 0),   # Positive x
+                max(weight * unit_r_vec[0], 0),  # Positive x
                 max(-weight * unit_r_vec[0], 0),  # Negative x
-                max(weight * unit_r_vec[1], 0),   # Positive y
-                max(-weight * unit_r_vec[1], 0)   # Negative y
+                max(weight * unit_r_vec[1], 0),  # Positive y
+                max(-weight * unit_r_vec[1], 0)  # Negative y
             ])
             contributions.append(proj)
         # Sum over all bipolar cells to get a single 1x4 vector.
@@ -346,11 +353,94 @@ def initialize_starburst_amacrine_cells(cone_bipolar_cells, distance_threshold=5
         starburst_cells.append(sac)
     return starburst_cells
 
+
+def initialize_cone_bipolar_cells(horizontal_cells, aii_amacrine_cells):
+    """
+    Given a retina object that contains a list of horizontal cells with already computed inhibitory responses,
+    create a bipolar cell layer.
+
+    Args:
+        horizontal_cells: A list of horizontal cell objects, each with a computed attribute `inhibited_stimulus`
+        (range normalized to [0, 1]).
+        aii_amacrine_cells: A list of AII amacrine cells.
+
+    Returns:
+        cone_bipolar_cells: The cone bipolar cells
+    """
+    zipped_cells = []
+    cone_bipolar_cells = []
+
+    for h_cell in horizontal_cells:
+        # Create an ON bipolar cell with typical parameter values
+        bipolar = Bipolar(h_cell.x, h_cell.y, cell_type='ON', threshold=0.5, tau=0.07, gain=3.0, saturation=1.0)
+        zipped_cells.append((bipolar, h_cell))
+        cone_bipolar_cells.append(bipolar)
+
+    logger.info("Finished Horizontal section")
+
+    for aii_cell in aii_amacrine_cells:
+        # Create an ON bipolar cell for AII amacrine
+        bipolar = Bipolar(aii_cell.x, aii_cell.y, cell_type='ON', threshold=0.5, tau=0.07, gain=3.0, saturation=1.0)
+        zipped_cells.append((bipolar, aii_cell))
+        cone_bipolar_cells.append(bipolar)
+
+    logger.info("Finished AII section")
+
+    return zipped_cells, cone_bipolar_cells
+
+
+def deserialize_horizontal_cells(in_path: str):
+    """
+    Load the serialized structure and recreate Horizontal objects (with pointers).
+    Requires Horizontal to be available in scope.
+    """
+    with open(in_path, 'rb') as f:
+        data = pickle.load(f)
+
+    horizontals = [
+        Horizontal(d['x'], d['y'], photoreceptor_cell=d.get('photoreceptor_cell', None), latest=d.get("latest")) for d
+        in data]
+
+    return horizontals
+
+
 # TODO: Temporary code block to test these cells. Input and output should be through files (which can be used for the demo)
 def test():
     p = argparse.ArgumentParser()
     p.add_argument("--out_csv", default="/Users/akhilreddy/IdeaProjects/beads/out/visual/aii_amacrine_out.csv")
     args = p.parse_args()
+
+    """
+
+    # horizontal_cells = deserialize_horizontal_cells('/Users/akhilreddy/IdeaProjects/beads/out/visual/horizontal.pkl')
+    logger.info("Loaded H Objects")
+    with open('/Users/akhilreddy/IdeaProjects/beads/out/visual/aii_amacrine.pkl', 'rb') as file:
+        aii_amacrine_cells = pickle.load(file)
+    logger.info("Loaded A Objects")
+
+    zipped_cells, cone_bipolar_cells = initialize_cone_bipolar_cells([], aii_amacrine_cells)
+
+    records = []
+    idx = 0
+    for cb, c in zipped_cells:
+        response = cb.function(c.latest)
+        records.append({
+            "idx": idx,
+            "x_micron": float(cb.x),
+            "y_micron": float(cb.y),
+            "response": response
+        })
+        idx += 1
+
+    df = pd.DataFrame.from_records(records)
+    df.to_csv(args.out_csv, index=False)
+    print(f"Wrote CSV: {args.out_csv}  (n_cells = {len(df)})")
+
+    with open('/Users/akhilreddy/IdeaProjects/beads/out/visual/cone_bipolar.pkl', 'wb') as file:
+        # noinspection PyTypeChecker
+        pickle.dump(cone_bipolar_cells, file)
+
+    """
 
     with open('/Users/akhilreddy/IdeaProjects/beads/out/visual/rod_bipolar.pkl', 'rb') as file:
         rod_bipolar_cells = pickle.load(file)
@@ -378,4 +468,5 @@ def test():
         pickle.dump(aii_amacrine_cells, file)
 
 
-# test()
+
+test()
