@@ -274,6 +274,7 @@ def create_cones(x, y, hex_size):
         vertices.append((vx, vy))
     # Create 6 triangular cells by taking the center and each pair of adjacent vertices.
     subtypes = ['S', 'M', 'L']
+    neighbors = []
     for k in range(6):
         v1 = vertices[k]
         v2 = vertices[(k + 1) % 6]
@@ -282,7 +283,13 @@ def create_cones(x, y, hex_size):
         cy = (y + v1[1] + v2[1]) / 3.0
         # Choose subtype in sequence S, M, L, S, M, L
         subtype = subtypes[k % 3]
-        cells.append(Cell(cx, cy, cell_type="cone", shape="triangle", subtype=subtype))
+        cell = Cell(cx, cy, cell_type="cone", shape="triangle", subtype=subtype)
+        if subtype == 'L':
+            cell.neighbor_cells = neighbors
+            neighbors = []
+        else:
+            neighbors.append(cell)
+        cells.append(cell)
 
     return cells
 

@@ -1,4 +1,8 @@
+import argparse
+import pickle
+
 import numpy as np
+import pandas as pd
 from scipy.spatial import kdtree
 
 """
@@ -359,4 +363,79 @@ def initialize_small_bistratified_cells(cone_bipolar_cells, group_size=6, lambda
         small_bistratified_ganglion_cells.append(sbg)
     return small_bistratified_ganglion_cells
 
+
 # TODO: Temporary code block to test these cells. Input and output should be through files (which can be used for the demo)
+def test():
+    p = argparse.ArgumentParser()
+    p.add_argument("--out_csv", default="/Users/akhilreddy/IdeaProjects/beads/out/visual/midget_out.csv")
+    args = p.parse_args()
+
+    with open('/Users/akhilreddy/IdeaProjects/beads/out/visual/cone_bipolar.pkl', 'rb') as file:
+        cone_bipolar_cells = pickle.load(file)
+    print("Loaded CB Objects")
+
+    midget_cells = initialize_midget_cells(cone_bipolar_cells)
+
+    records = []
+    idx = 0
+    for c in midget_cells:
+        response = c.function()
+        records.append({
+            "idx": idx,
+            "center": float(c.center),
+            "integrated_signal": float(c.integrated_signal),
+            "threshold": float(c.threshold),
+            "response": response
+        })
+        idx += 1
+
+    with open('/Users/akhilreddy/IdeaProjects/beads/out/visual/midget.pkl', 'wb') as file:
+        # noinspection PyTypeChecker
+        pickle.dump(midget_cells, file)
+
+    """"
+    parasol_cells = initialize_parasol_cells(cone_bipolar_cells)
+
+    records = []
+    idx = 0
+    for c in parasol_cells:
+        response = c.function()
+        records.append({
+            "idx": idx,
+            "center": float(c.center),
+            "integrated_signal": float(c.integrated_signal),
+            "threshold": float(c.threshold),
+            "response": response
+        })
+        idx += 1
+
+    with open('/Users/akhilreddy/IdeaProjects/beads/out/visual/parasol.pkl', 'wb') as file:
+        # noinspection PyTypeChecker
+        pickle.dump(parasol_cells, file)
+        
+    small_bistratified_cells = initialize_small_bistratified_cells(cone_bipolar_cells)
+
+    records = []
+    idx = 0
+    for c in small_bistratified_cells:
+        response = c.function()
+        records.append({
+            "idx": idx,
+            "center": float(c.center),
+            "integrated_signal": float(c.integrated_signal),
+            "threshold": float(c.threshold),
+            "response": response
+        })
+        idx += 1
+
+    with open('/Users/akhilreddy/IdeaProjects/beads/out/visual/small_bistratified.pkl', 'wb') as file:
+        # noinspection PyTypeChecker
+        pickle.dump(small_bistratified_cells, file)
+    """
+    df = pd.DataFrame.from_records(records)
+    df.to_csv(args.out_csv, index=False)
+    print(f"Wrote CSV: {args.out_csv}  (n_cells = {len(df)})")
+
+
+if __name__ == "__main__":
+    test()
