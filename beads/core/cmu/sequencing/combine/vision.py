@@ -140,7 +140,7 @@ def initialize_horizontal_cells(photoreceptor_cells, inhibition_radius=10.0):
     positions = []
     for cell in photoreceptor_cells:
         if cell.cell_type == "cone":
-            # In a full run, 'cell' would already have a stimulus attribute.
+            # TODO: Flatten cone cells across subtypes
             horizontal_cells.append(Horizontal(cell.x, cell.y, cell))
             positions.append([float(cell.x), float(cell.y)])
 
