@@ -137,6 +137,13 @@ class Cone:
             self.lambda_max = 565  # nm
         self.latest = None
 
+    def get_opponent_channels(self, L, M, S):
+        # Calculate opponent channels
+        rg = L - M
+        by = S - (L + M)
+        lum = L + M
+        return rg, by, lum
+
     """
     Process an RGB pixel given a dominant wavelength (nm) of the stimulus.
     Only processes if the estimated brightness exceeds the cone threshold.
@@ -248,17 +255,19 @@ class Cell:
         activation_threshold: A minimum brightness level for that cell to pickup colour
     """
 
-    def __init__(self, x, y, cell_type, shape, subtype=None, activation_threshold=None):
+    def __init__(self, x, y, cell_type, shape, centres=None, activation_threshold=None):
         self.x = x
         self.y = y
+        self.shape = shape  # "triangle" or "hexagon"
+        self.activation_threshold = activation_threshold
+        self.cells = []
         self.cell_type = cell_type  # "cone" or "rod"
         if cell_type == 'rod':
-            self.cell = Rod()
+            self.cells.append(Rod())
         elif cell_type == 'cone':
-            self.cell = Cone(subtype=subtype)
-        self.shape = shape  # "triangle" or "hexagon"
-        self.subtype = subtype
-        self.activation_threshold = activation_threshold
+            subtypes = ['S', 'M', 'L']
+            for i, centre in enumerate(centres):
+                self.cells.append(Cone(subtype=subtypes[i]))
 
     def __repr__(self):
         return f"{self.cell_type.capitalize()} ({self.shape}) at (x={self.x:.2f}, y={self.y:.2f})"
@@ -273,22 +282,18 @@ def create_cones(x, y, hex_size):
         vy = y + hex_size * math.sin(angle)
         vertices.append((vx, vy))
     # Create 6 triangular cells by taking the center and each pair of adjacent vertices.
-    subtypes = ['S', 'M', 'L']
-    neighbors = []
-    for k in range(6):
-        v1 = vertices[k]
-        v2 = vertices[(k + 1) % 6]
-        # Compute the centroid of the triangle (for illustrative positioning).
-        cx = (x + v1[0] + v2[0]) / 3.0
-        cy = (y + v1[1] + v2[1]) / 3.0
-        # Choose subtype in sequence S, M, L, S, M, L
-        subtype = subtypes[k % 3]
-        cell = Cell(cx, cy, cell_type="cone", shape="triangle", subtype=subtype)
-        if subtype == 'L':
-            cell.neighbor_cells = neighbors
-            neighbors = []
-        else:
-            neighbors.append(cell)
+    for i in range(2):
+        centroids = []
+        for j in range(3):
+            v1 = vertices[i*3 + j]
+            v2 = vertices[(i*3 + j + 1) % 6]
+            # Compute the centroid of the triangle (for illustrative positioning).
+            cx = (x + v1[0] + v2[0]) / 3.0
+            cy = (y + v1[1] + v2[1]) / 3.0
+            centroids.append((cx, cy))
+
+        cx, cy = np.mean(centroids, axis=0)
+        cell = Cell(cx, cy, cell_type="cone", shape="triangle", centres=centroids)
         cells.append(cell)
 
     return cells
@@ -421,18 +426,31 @@ def test():
         wav = rgb_to_wavelength(R, G, B)
         # compute response using cell's phototransduction function
         resp = 0.0
-        if c.cell is not None:
-            resp = float(c.cell.function(int(R), int(G), int(B), wav))
-        records.append({
-            "idx": idx,
-            "x_micron": float(c.x),
-            "y_micron": float(c.y),
-            "pixel_x": int(px),
-            "pixel_y": int(py),
-            "cell_type": c.cell_type,
-            "subtype": c.subtype,
-            "response": resp
-        })
+        if len(c.cells):
+            if c.cell_type == "rod":
+                resp = float(c.cells[0].function(int(R), int(G), int(B), wav))
+                records.append({
+                    "idx": idx,
+                    "x_micron": float(c.x),
+                    "y_micron": float(c.y),
+                    "pixel_x": int(px),
+                    "pixel_y": int(py),
+                    "cell_type": c.cell_type,
+                    "subtype": c.subtype,
+                    "response": resp
+                })
+            else:
+                for cell in c.cells:
+                    resp += float(cell.function(int(R), int(G), int(B), wav))
+
+                # TODO: Colour opponency
+                records.append({
+                    "idx": idx,
+                    "x_micron": float(c.x),
+                    "y_micron": float(c.y),
+                    "pixel_x": int(px)
+                })
+
 
     with open('/Users/akhilreddy/IdeaProjects/beads/out/visual/photoreceptors.pkl', 'wb') as file:
         # noinspection PyTypeChecker
