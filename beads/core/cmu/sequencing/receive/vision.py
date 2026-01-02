@@ -126,7 +126,9 @@ class Cone:
         subtype (str): 'S', 'M', or 'L'
     """
 
-    def __init__(self, subtype=None, threshold=100):
+    def __init__(self, x, y, subtype=None, threshold=100):
+        self.x = x
+        self.y = y
         self.threshold = threshold
         self.subtype = subtype
         if self.subtype == 'S':
@@ -136,13 +138,6 @@ class Cone:
         elif self.subtype == 'L':
             self.lambda_max = 565  # nm
         self.latest = None
-
-    def get_opponent_channels(self, L, M, S):
-        # Calculate opponent channels
-        rg = L - M
-        by = S - (L + M)
-        lum = L + M
-        return rg, by, lum
 
     """
     Process an RGB pixel given a dominant wavelength (nm) of the stimulus.
@@ -204,7 +199,9 @@ class Rod:
         n_iterations (int): Number of iterations for signal integration.
     """
 
-    def __init__(self, threshold=1, n_iterations=10):
+    def __init__(self, x, y, threshold=1, n_iterations=10):
+        self.x = x
+        self.y = y
         self.threshold = threshold
         self.lambda_max = 498  # nm typical for rods.
         self.n_iterations = n_iterations
@@ -251,11 +248,12 @@ class Cell:
         x (float): The x-coordinate of the cell.
         y (float): The y-coordinate of the cell.
         cell_type (str): The type of the cell ('rod' or 'cone').
-        subtype (str or None): For cone cells, one of 'S', 'M', or 'L'. For rods, this is None.
+        shape (str or None): "triangle" or "hexagon"
         activation_threshold: A minimum brightness level for that cell to pickup colour
     """
 
     def __init__(self, x, y, cell_type, shape, centres=None, activation_threshold=None):
+        self.latest = None
         self.x = x
         self.y = y
         self.shape = shape  # "triangle" or "hexagon"
@@ -263,11 +261,21 @@ class Cell:
         self.cells = []
         self.cell_type = cell_type  # "cone" or "rod"
         if cell_type == 'rod':
-            self.cells.append(Rod())
+            self.cells.append(Rod(x, y))
         elif cell_type == 'cone':
             subtypes = ['S', 'M', 'L']
             for i, centre in enumerate(centres):
-                self.cells.append(Cone(subtype=subtypes[i]))
+                self.cells.append(Cone(x, y, subtype=subtypes[i]))
+
+    def get_opponent_channels(self, L, M, S):
+        # Calculate opponent channels
+        rg = L - M
+        by = S - (L + M)
+        lum = L + M
+
+        ret = {'L': rg, 'M': lum, 'S': by}
+        self.latest = ret
+        return self.latest
 
     def __repr__(self):
         return f"{self.cell_type.capitalize()} ({self.shape}) at (x={self.x:.2f}, y={self.y:.2f})"
@@ -285,8 +293,8 @@ def create_cones(x, y, hex_size):
     for i in range(2):
         centroids = []
         for j in range(3):
-            v1 = vertices[i*3 + j]
-            v2 = vertices[(i*3 + j + 1) % 6]
+            v1 = vertices[i * 3 + j]
+            v2 = vertices[(i * 3 + j + 1) % 6]
             # Compute the centroid of the triangle (for illustrative positioning).
             cx = (x + v1[0] + v2[0]) / 3.0
             cy = (y + v1[1] + v2[1]) / 3.0
@@ -436,27 +444,60 @@ def test():
                     "pixel_x": int(px),
                     "pixel_y": int(py),
                     "cell_type": c.cell_type,
-                    "subtype": c.subtype,
-                    "response": resp
+                    "response": resp,
+                    "c": c,
                 })
             else:
                 for cell in c.cells:
                     resp += float(cell.function(int(R), int(G), int(B), wav))
 
-                # TODO: Colour opponency
                 records.append({
                     "idx": idx,
                     "x_micron": float(c.x),
                     "y_micron": float(c.y),
-                    "pixel_x": int(px)
+                    "pixel_x": int(px),
+                    "pixel_y": int(py),
+                    "cell_type": c.cell_type,
+                    "c": c,
                 })
 
+    with_opponency = []
+    store_cells = []
+    for record in records:
+        if record["cell_type"] == "cone":
+            parent_cell = record["c"]
+            cells_latest = {c.subtype: c.latest for c in parent_cell.cells}
+
+            ret = parent_cell.get_opponent_channels(cells_latest["L"], cells_latest["M"], cells_latest["S"])
+
+            # Store opponency
+            for cell in parent_cell.cells:
+                px = int((cell.x + args.surface_radius) * scale_x)
+                py = int((cell.y + args.surface_radius) * scale_y)
+                px = max(0, min(W_img - 1, px))
+                py = max(0, min(H_img - 1, py))
+
+                record = {
+                    "idx": record["idx"],
+                    "x_micron": float(cell.x),
+                    "y_micron": float(cell.y),
+                    "pixel_x": int(px),
+                    "pixel_y": int(py),
+                    "cell_type": record["cell_type"],
+                    "subtype": cell.subtype,
+                    "response": ret[cell.subtype],
+                }
+                with_opponency.append(record)
+                store_cells.append(parent_cell)
+        else:
+            with_opponency.append(record)
+            store_cells.append(record["c"])
 
     with open('/Users/akhilreddy/IdeaProjects/beads/out/visual/photoreceptors.pkl', 'wb') as file:
         # noinspection PyTypeChecker
-        pickle.dump(cells, file)
+        pickle.dump(store_cells, file)
 
-    df = pd.DataFrame.from_records(records)
+    df = pd.DataFrame.from_records(with_opponency)
     df.to_csv(args.out_csv, index=False)
     print(f"Wrote CSV: {args.out_csv}  (n_cells = {len(df)})")
 
@@ -486,5 +527,4 @@ def test():
 
 
 if __name__ == "__main__":
-    # test()
-    pass
+    test()

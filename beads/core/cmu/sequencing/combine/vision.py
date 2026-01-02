@@ -140,7 +140,7 @@ def initialize_horizontal_cells(photoreceptor_cells, inhibition_radius=10.0):
     positions = []
     for cell in photoreceptor_cells:
         if cell.cell_type == "cone":
-            # TODO: Flatten cone cells across subtypes
+            # TODO: Flatten cone cells across subtypes, to make it easier for downstream processing
             horizontal_cells.append(Horizontal(cell.x, cell.y, cell))
             positions.append([float(cell.x), float(cell.y)])
 
@@ -282,7 +282,6 @@ def serialize_horizontal_cells(horizontal_cells: List[object], out_path: str):
         pickle.dump(serial, file, protocol=pickle.HIGHEST_PROTOCOL)
 
 
-# TODO: Temporary code block to test these cells. Input and output should be through files (which can be used for the demo)
 def test():
     p = argparse.ArgumentParser()
     p.add_argument("--out_csv", default="/Users/akhilreddy/IdeaProjects/beads/out/visual/cone_bipolar_out.csv")
