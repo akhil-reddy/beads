@@ -398,8 +398,8 @@ def deserialize_horizontal_cells(in_path: str):
         data = pickle.load(f)
 
     horizontals = [
-        Horizontal(d['x'], d['y'], photoreceptor_cell=d.get('photoreceptor_cell', None), latest=d.get("latest")) for d
-        in data]
+        Horizontal(d['x'], d['y'], d['subtype'], photoreceptor_cell=d.get('photoreceptor_cell', None), latest=d.get("latest")) for d in data
+    ]
 
     return horizontals
 

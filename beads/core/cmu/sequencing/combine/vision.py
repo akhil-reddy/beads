@@ -6,8 +6,6 @@ is analogous to a set of coloured rain drops separated by a membrane.
 
 """
 import argparse
-import gzip
-import logging
 import math
 import pickle
 from typing import List
@@ -28,9 +26,10 @@ interact constructively / destructively so that "context" spreads out horizontal
 
 
 class Horizontal:
-    def __init__(self, x, y, photoreceptor_cell=None, pointers=None, latest=None):
+    def __init__(self, x, y, subtype, photoreceptor_cell=None, pointers=None, latest=None):
         self.x = x
         self.y = y
+        self.subtype = subtype
         self.photoreceptor_cell = photoreceptor_cell
         self.stimulus = 0.0
         self.field_stimulus = 0.0
@@ -119,8 +118,7 @@ class Horizontal:
 
     def function(self, stimulus):
         self.set_stimulus(stimulus)
-        self.latest = self.surround_inhibit()
-        return self.latest
+        return self.surround_inhibit()
 
 
 def initialize_horizontal_cells(photoreceptor_cells, inhibition_radius=10.0):
@@ -140,9 +138,8 @@ def initialize_horizontal_cells(photoreceptor_cells, inhibition_radius=10.0):
     positions = []
     for cell in photoreceptor_cells:
         if cell.cell_type == "cone":
-            # TODO: Flatten cone cells across subtypes, to make it easier for downstream processing
             for cone_cell in cell.cells:
-                horizontal_cells.append(Horizontal(cone_cell.x, cone_cell.y, cone_cell))
+                horizontal_cells.append(Horizontal(cone_cell.x, cone_cell.y, cone_cell.subtype, photoreceptor_cell=cone_cell))
                 positions.append([float(cell.x), float(cell.y)])
 
     positions = np.asarray(positions, dtype=np.float32)
@@ -273,6 +270,7 @@ def serialize_horizontal_cells(horizontal_cells: List[object], out_path: str):
         serial.append({
             'x': float(getattr(h, 'x', 0.0)),
             'y': float(getattr(h, 'y', 0.0)),
+            'subtype': getattr(h, 'subtype', ''),
             'latest': getattr(h, 'latest', 0.0),
             'neighbors': neigh_idxs,
             'photoreceptor_cell': getattr(h, 'photoreceptor_cell', None),
