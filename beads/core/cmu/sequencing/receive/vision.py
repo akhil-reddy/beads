@@ -487,11 +487,12 @@ def test():
                     "subtype": cell.subtype,
                     "response": ret[cell.subtype],
                 }
+                store_cells.append(cell)
                 with_opponency.append(record)
-                store_cells.append(parent_cell)
         else:
-            with_opponency.append(record)
             store_cells.append(record["c"])
+            del record["c"]
+            with_opponency.append(record)
 
     with open('/Users/akhilreddy/IdeaProjects/beads/out/visual/photoreceptors.pkl', 'wb') as file:
         # noinspection PyTypeChecker
@@ -527,4 +528,5 @@ def test():
 
 
 if __name__ == "__main__":
-    test()
+    # test()
+    pass

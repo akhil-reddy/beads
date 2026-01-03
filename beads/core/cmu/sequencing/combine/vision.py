@@ -141,8 +141,9 @@ def initialize_horizontal_cells(photoreceptor_cells, inhibition_radius=10.0):
     for cell in photoreceptor_cells:
         if cell.cell_type == "cone":
             # TODO: Flatten cone cells across subtypes, to make it easier for downstream processing
-            horizontal_cells.append(Horizontal(cell.x, cell.y, cell))
-            positions.append([float(cell.x), float(cell.y)])
+            for cone_cell in cell.cells:
+                horizontal_cells.append(Horizontal(cone_cell.x, cone_cell.y, cone_cell))
+                positions.append([float(cell.x), float(cell.y)])
 
     positions = np.asarray(positions, dtype=np.float32)
     tree = KDTree(positions)
@@ -284,11 +285,13 @@ def serialize_horizontal_cells(horizontal_cells: List[object], out_path: str):
 
 def test():
     p = argparse.ArgumentParser()
-    p.add_argument("--out_csv", default="/Users/akhilreddy/IdeaProjects/beads/out/visual/cone_bipolar_out.csv")
+    p.add_argument("--out_csv", default="/Users/akhilreddy/IdeaProjects/beads/out/visual/horizontal_out.csv")
     args = p.parse_args()
 
     with open('/Users/akhilreddy/IdeaProjects/beads/out/visual/photoreceptors.pkl', 'rb') as file:
         photoreceptor_cells = pickle.load(file)
+
+    """
     
     rod_bipolar_cells = initialize_rod_bipolar_cells(photoreceptor_cells)
     
@@ -311,16 +314,15 @@ def test():
     df = pd.DataFrame.from_records(records)
     df.to_csv(args.out_csv, index=False)
     print(f"Wrote CSV: {args.out_csv}  (n_cells = {len(df)})")
-
+        
     """
-    
-    
+
     horizontal_cells = initialize_horizontal_cells(photoreceptor_cells)
-    
+
     records = []
     for idx, c in enumerate(horizontal_cells):
         c.set_stimulus(c.photoreceptor_cell.cell.latest)
-    
+
     for idx, c in enumerate(horizontal_cells):
         before = c.stimulus
         c.surround_inhibit()
@@ -333,16 +335,14 @@ def test():
             "field_stimulus": c.field_stimulus,
             "stimulus_after": c.latest
         })
-    
-    serialize_horizontal_cells(horizontal_cells,'/Users/akhilreddy/IdeaProjects/beads/out/visual/horizontal.pkl')
-    
+
+    serialize_horizontal_cells(horizontal_cells, '/Users/akhilreddy/IdeaProjects/beads/out/visual/horizontal.pkl')
+
     df = pd.DataFrame.from_records(records)
     df.to_csv(args.out_csv, index=False)
     print(f"Wrote CSV: {args.out_csv}  (n_cells = {len(df)})")
-    
-    """
 
 
 if __name__ == "__main__":
-    # test()
-    pass
+    test()
+    # pass
