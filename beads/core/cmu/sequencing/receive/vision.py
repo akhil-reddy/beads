@@ -487,8 +487,8 @@ def test():
                     "subtype": cell.subtype,
                     "response": ret[cell.subtype],
                 }
-                store_cells.append(cell)
                 with_opponency.append(record)
+            store_cells.append(parent_cell)
         else:
             store_cells.append(record["c"])
             del record["c"]

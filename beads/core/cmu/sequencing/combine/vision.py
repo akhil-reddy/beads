@@ -13,7 +13,7 @@ from typing import List
 import numpy as np
 import pandas as pd
 from scipy.spatial import KDTree
-from beads.core.cmu.sequencing.receive.vision import Cell
+from beads.core.cmu.sequencing.receive.vision import *
 
 """
 After conversion, each unit / "drop" is combined with its neighbours based on similarity. The membrane
@@ -148,7 +148,7 @@ def initialize_horizontal_cells(photoreceptor_cells, inhibition_radius=10.0):
 
     # Link each horizontal to its neighbours (exclude self index)
     for idx, neigh_idxs in enumerate(neighbors_idxs):
-        neighs = [horizontal_cells[i] for i in neigh_idxs if i != idx]
+        neighs = [horizontal_cells[i] for i in neigh_idxs if i != idx and horizontal_cells[i].subtype == horizontal_cells[idx].subtype]
         horizontal_cells[idx].link(neighs)
 
     # Attach the horizontal cell layer to the retina.
@@ -319,7 +319,7 @@ def test():
 
     records = []
     for idx, c in enumerate(horizontal_cells):
-        c.set_stimulus(c.photoreceptor_cell.cell.latest)
+        c.set_stimulus(c.photoreceptor_cell.latest)
 
     for idx, c in enumerate(horizontal_cells):
         before = c.stimulus
