@@ -5,13 +5,9 @@ Before this operation, the RGB stimulus is converted into a lightweight "beehive
 is analogous to a set of coloured rain drops separated by a membrane.
 
 """
-import argparse
-import math
-import pickle
 from typing import List
 
 import numpy as np
-import pandas as pd
 from scipy.spatial import KDTree
 from beads.core.cmu.sequencing.receive.vision import *
 
@@ -91,11 +87,12 @@ class Horizontal:
             numpy.ndarray: The new inhibited stimulus (ensured non-negative).
         """
         if not self.pointers:
+            self.latest = self.stimulus
             return self.stimulus
 
         # The horizontal cells coupled with gap junctions
         wide_weighted_sum = np.zeros_like(self.stimulus, dtype=float)
-        wide_total_weight = 0.0
+        wide_total_weight = 1e-6
 
         # Compute the weight for each neighbor and accumulate weighted stimuli
         for cell in self.pointers:
@@ -139,7 +136,8 @@ def initialize_horizontal_cells(photoreceptor_cells, inhibition_radius=10.0):
     for cell in photoreceptor_cells:
         if cell.cell_type == "cone":
             for cone_cell in cell.cells:
-                horizontal_cells.append(Horizontal(cone_cell.x, cone_cell.y, cone_cell.subtype, photoreceptor_cell=cone_cell))
+                horizontal_cells.append(
+                    Horizontal(cone_cell.x, cone_cell.y, cone_cell.subtype, photoreceptor_cell=cone_cell))
                 positions.append([float(cell.x), float(cell.y)])
 
     positions = np.asarray(positions, dtype=np.float32)
@@ -148,7 +146,8 @@ def initialize_horizontal_cells(photoreceptor_cells, inhibition_radius=10.0):
 
     # Link each horizontal to its neighbours (exclude self index)
     for idx, neigh_idxs in enumerate(neighbors_idxs):
-        neighs = [horizontal_cells[i] for i in neigh_idxs if i != idx and horizontal_cells[i].subtype == horizontal_cells[idx].subtype]
+        neighs = [horizontal_cells[i] for i in neigh_idxs if
+                  i != idx and horizontal_cells[i].subtype == horizontal_cells[idx].subtype]
         horizontal_cells[idx].link(neighs)
 
     # Attach the horizontal cell layer to the retina.
@@ -197,12 +196,12 @@ class Bipolar:
             dt (float): The time step (in seconds) for numerical integration.
         """
         # For ON bipolar cells, the reduction in photoreceptor glutamate (i.e., a lower input)
-        # produces excitation. For OFF bipolar cells, an increase in input is excitatory.
+        # produces excitation. For OFF bipolar cells, an increase in input is excitatory. However, in digital retina it's flipped
         if self.cell_type == 'ON':
             # Compute the drive as the difference between threshold and input
-            drive = self.threshold - input_signal
-        elif self.cell_type == 'OFF':
             drive = input_signal - self.threshold
+        elif self.cell_type == 'OFF':
+            drive = self.threshold - input_signal
         else:
             raise ValueError("cell_type must be either 'ON' or 'OFF'.")
 
@@ -343,4 +342,4 @@ def test():
 
 if __name__ == "__main__":
     test()
-    # pass
+    pass

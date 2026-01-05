@@ -1,14 +1,10 @@
 import argparse
-import logging
 import pickle
-
 import numpy as np
 import pandas as pd
 from scipy.spatial import kdtree
 
 from beads.core.cmu.sequencing.combine.vision import Bipolar, Horizontal
-
-logger = logging.getLogger(__name__)
 
 
 def sigmoid(x, slope):
@@ -376,7 +372,7 @@ def initialize_cone_bipolar_cells(horizontal_cells, aii_amacrine_cells):
         zipped_cells.append((bipolar, h_cell))
         cone_bipolar_cells.append(bipolar)
 
-    logger.info("Finished Horizontal section")
+    print("Finished Horizontal section")
 
     for aii_cell in aii_amacrine_cells:
         # Create an ON bipolar cell for AII amacrine
@@ -384,7 +380,7 @@ def initialize_cone_bipolar_cells(horizontal_cells, aii_amacrine_cells):
         zipped_cells.append((bipolar, aii_cell))
         cone_bipolar_cells.append(bipolar)
 
-    logger.info("Finished AII section")
+    print("Finished AII section")
 
     return zipped_cells, cone_bipolar_cells
 
@@ -398,7 +394,8 @@ def deserialize_horizontal_cells(in_path: str):
         data = pickle.load(f)
 
     horizontals = [
-        Horizontal(d['x'], d['y'], d['subtype'], photoreceptor_cell=d.get('photoreceptor_cell', None), latest=d.get("latest")) for d in data
+        Horizontal(d['x'], d['y'], d['subtype'], photoreceptor_cell=d.get('photoreceptor_cell', None),
+                   latest=d.get("latest")) for d in data
     ]
 
     return horizontals
@@ -419,10 +416,10 @@ def test():
     args = p.parse_args()
 
     horizontal_cells = deserialize_horizontal_cells('/Users/akhilreddy/IdeaProjects/beads/out/visual/horizontal.pkl')
-    logger.info("Loaded H Objects")
+    print("Loaded H Objects")
     with open('/Users/akhilreddy/IdeaProjects/beads/out/visual/aii_amacrine.pkl', 'rb') as file:
         aii_amacrine_cells = RemappingUnpickler(file).load()
-    logger.info("Loaded A Objects")
+    print("Loaded A Objects")
 
     zipped_cells, cone_bipolar_cells = initialize_cone_bipolar_cells(horizontal_cells, aii_amacrine_cells)
 
