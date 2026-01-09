@@ -3,7 +3,7 @@ import pickle
 
 import numpy as np
 import pandas as pd
-from scipy.spatial import kdtree
+from scipy.spatial import KDTree
 
 """
 4 types of Ganglion Cells:
@@ -281,37 +281,110 @@ class SmallBistratifiedGanglion:
         return out
 
 
-def cluster_bipolar_upto_group_size(bipolar_cells, group_size=8, channel_type=None):
+def cluster_bipolar_upto_group_size(bipolar_cells, group_size=8, channel_type=None, leafsize=16, subtypes=None):
     """
-    Cluster bipolar cells into groups of up to 'group_size' based on spatial proximity.
+    Efficient greedy clustering by spatial proximity.
 
-    Args:
-        bipolar_cells (list): List of bipolar cell objects, each with .x and .y attributes.
-        group_size (int): Desired maximum number of cells per cluster.
-        channel_type: the particular channel type to cluster by proximity.
+    - bipolar_cells: list of objects with .x and .y
+    - group_size: desired max size per cluster (>=1)
+    - channel_type: None (all cells) OR a string (attribute name to match) OR a callable(cell)->bool
+    - leafsize: cKDTree parameter (tune for your data size)
 
-    Returns:
-        List[List[bipolar_cell]]: A list of clusters.
+    Returns: list of clusters (each cluster is a list of bipolar cell objects).
     """
-    unassigned = bipolar_cells.copy()
+    if subtypes is not None:
+        bipolar_cells = [b for b in bipolar_cells if b.subtype in subtypes]
+
+    if group_size <= 1:
+        # trivial clusters: each cell is its own cluster
+        return [[b] for b in bipolar_cells]
+
+    N = len(bipolar_cells)
+    if N == 0:
+        return []
+
+    # Build arrays of positions
+    pts = np.empty((N, 2), dtype=np.float64)
+    for i, b in enumerate(bipolar_cells):
+        pts[i, 0] = float(b.x)
+        pts[i, 1] = float(b.y)
+
+    # Build an index list of cells to cluster (respecting channel_type if provided)
+    if channel_type is None:
+        indices = np.arange(N, dtype=int)
+    else:
+        if callable(channel_type):
+            mask = np.fromiter((1 if channel_type(b) else 0 for b in bipolar_cells), dtype=np.bool_, count=N)
+        else:
+            # treat channel_type as attribute value to match (attribute name 'channel' or 'channel_type' fallback)
+            def _matches(b):
+                # try common attribute names
+                val = getattr(b, 'channel_type', None)
+                if val is None:
+                    val = getattr(b, 'channel', None)
+                return val == channel_type
+            mask = np.fromiter((1 if _matches(b) else 0 for b in bipolar_cells), dtype=np.bool_, count=N)
+
+        indices = np.nonzero(mask)[0]
+
+    M = len(indices)
+    if M == 0:
+        return []
+
+    sub_pts = pts[indices]
+
+    # k for initial neighbor lookup: at least group_size (include self)
+    k0 = min(group_size, M)
+
+    tree = KDTree(sub_pts, leafsize=leafsize)
+
+    # precompute k-nearest neighbors for each candidate (indices are into sub_pts)
+    # result shape: (M, k0)
+    _, neighbors = tree.query(sub_pts, k=k0, workers=-1)
+
+    # normalize neighbors to 2D array (if k0 == 1, query returns shape (M,), so force 2D)
+    neighbors = np.atleast_2d(neighbors)
+
+    assigned = np.zeros(M, dtype=bool)
     clusters = []
 
-    while unassigned:
-        # Take the first unassigned cell as seed
-        seed = unassigned.pop(0)
-        seed_pos = np.array([seed.x, seed.y])
-        # Compute distances to all other unassigned cells
-        dists = [np.linalg.norm(np.array([b.x, b.y]) - seed_pos) for b in unassigned]
-        # Sort indices by distance
-        sorted_idx = np.argsort(dists)
-        # Take the nearest (group_size - 1) neighbors
-        neighbors = [unassigned[i] for i in sorted_idx[:group_size - 1]]
-        # Form cluster
-        cluster = [seed] + neighbors
-        # Remove chosen neighbors from unassigned
-        for b in neighbors:
-            unassigned.remove(b)
+    # iterate through candidates in index order (greedy)
+    for i_sub in range(M):
+        if assigned[i_sub]:
+            continue
+
+        # choose seed i_sub and collect up to group_size-1 nearest unassigned neighbors
+        chosen = []
+        for j in neighbors[i_sub]:
+            j = int(j)
+            if j == i_sub:
+                continue
+            if not assigned[j]:
+                chosen.append(j)
+                if len(chosen) >= group_size - 1:
+                    break
+
+        # if not enough neighbors found (because many were assigned), query more neighbors on-the-fly
+        if len(chosen) < group_size - 1 and M > k0:
+            # ask for a larger neighborhood (cap to M)
+            k_more = min(M, max(k0 * 4, group_size * 4))
+            _, neigh2 = tree.query(sub_pts[i_sub], k=k_more)
+            for j in np.atleast_1d(neigh2):
+                j = int(j)
+                if j == i_sub or assigned[j] or j in chosen:
+                    continue
+                chosen.append(j)
+                if len(chosen) >= group_size - 1:
+                    break
+
+        # form cluster (map sub-indices back to original bipolar_cells indices)
+        cluster_sub_indices = [i_sub] + chosen
+        orig_indices = indices[cluster_sub_indices].tolist()
+        cluster = [bipolar_cells[idx] for idx in orig_indices]
         clusters.append(cluster)
+
+        # mark assigned
+        assigned[cluster_sub_indices] = True
 
     return clusters
 
@@ -321,7 +394,7 @@ def initialize_midget_cells(cone_bipolar_cells, group_size=8, lambda_m=30.0, int
     Cluster r-g cone bipolar cells into groups and create Midget Ganglion Cells.
     """
     # Group midget bipolar cells.
-    clusters = cluster_bipolar_upto_group_size(cone_bipolar_cells, group_size)
+    clusters = cluster_bipolar_upto_group_size(cone_bipolar_cells, group_size, subtypes=['L'])
     midget_cells = []
     for cluster in clusters:
         if len(cluster) == 0:
@@ -336,7 +409,7 @@ def initialize_parasol_cells(cone_bipolar_cells, group_size=8, lambda_p=80.0, in
     Cluster diffuse bipolar cells into groups and create Parasol Ganglion Cells.
     """
     # Group diffuse bipolar cells.
-    clusters = cluster_bipolar_upto_group_size(cone_bipolar_cells, group_size)
+    clusters = cluster_bipolar_upto_group_size(cone_bipolar_cells, group_size, subtypes=['', 'M'])
     parasol_cells = []
     for cluster in clusters:
         if len(cluster) == 0:
@@ -353,7 +426,7 @@ def initialize_small_bistratified_cells(cone_bipolar_cells, group_size=6, lambda
     Cluster b-y cone bipolar cells into groups and create Small Bistratified Ganglion Cells.
     """
     # Group S bipolar cells
-    clusters = cluster_bipolar_upto_group_size(cone_bipolar_cells, group_size)
+    clusters = cluster_bipolar_upto_group_size(cone_bipolar_cells, group_size, subtypes=['S'])
     small_bistratified_ganglion_cells = []
     for cluster in clusters:
         if len(cluster) == 0:

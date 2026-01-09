@@ -162,7 +162,7 @@ stimulus when its at low detail. Neurotransmitters are highly active here.
 
 
 class Bipolar:
-    def __init__(self, x, y, cell_type='ON', threshold=0.5, gain=2.0, tau=0.1, saturation=1.0):
+    def __init__(self, x, y, cell_type='ON', subtype='', threshold=0.5, gain=2.0, tau=0.1, saturation=1.0):
         """
         Initialize a bipolar cell that processes graded input over time.
 
@@ -176,6 +176,7 @@ class Bipolar:
             saturation (float): Maximum possible output (models the limited dynamic range).
         """
         self.cell_type = cell_type.upper()
+        self.subtype = subtype
         self.x = x
         self.y = y
         self.threshold = threshold

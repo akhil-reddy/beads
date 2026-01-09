@@ -2,7 +2,7 @@ import argparse
 import pickle
 import numpy as np
 import pandas as pd
-from scipy.spatial import kdtree
+from scipy.spatial import KDTree
 
 from beads.core.cmu.sequencing.combine.vision import Bipolar, Horizontal
 
@@ -368,7 +368,7 @@ def initialize_cone_bipolar_cells(horizontal_cells, aii_amacrine_cells):
 
     for h_cell in horizontal_cells:
         # Create an ON bipolar cell with typical parameter values
-        bipolar = Bipolar(h_cell.x, h_cell.y, cell_type='ON', threshold=0.5, tau=0.07, gain=3.0, saturation=1.0)
+        bipolar = Bipolar(h_cell.x, h_cell.y, cell_type='ON', subtype=h_cell.subtype, threshold=0.5, tau=0.07, gain=3.0, saturation=1.0)
         zipped_cells.append((bipolar, h_cell))
         cone_bipolar_cells.append(bipolar)
 
@@ -431,6 +431,7 @@ def test():
             "idx": idx,
             "x_micron": float(cb.x),
             "y_micron": float(cb.y),
+            "subtype": cb.subtype,
             "response": response
         })
         idx += 1
