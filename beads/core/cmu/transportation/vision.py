@@ -184,7 +184,7 @@ class MidgetGanglion:
             pos = np.array([b.x, b.y])
             distance = np.linalg.norm(pos - self.center)
             weight = exponential_decay(distance, self.lambda_m)
-            total += weight * b.processed_stimulus
+            total += weight * b.get_output()
         self.integrated_signal = self.integration_factor * total
 
     def function(self):
@@ -228,7 +228,7 @@ class ParasolGanglion:
             pos = np.array([b.x, b.y])
             distance = np.linalg.norm(pos - self.center)
             weight = exponential_decay(distance, self.lambda_p)
-            total += weight * b.processed_stimulus
+            total += weight * b.get_output()
         self.integrated_signal = self.integration_factor * total
         return self.integrated_signal
 
@@ -270,7 +270,7 @@ class SmallBistratifiedGanglion:
             pos = np.array([b.x, b.y])
             distance = np.linalg.norm(pos - self.center)
             weight = exponential_decay(distance, self.lambda_sb)
-            total += weight * b.processed_stimulus
+            total += weight * b.get_output()
         self.integrated_signal = self.integration_factor * total
         return self.integrated_signal
 
@@ -437,16 +437,17 @@ def initialize_small_bistratified_cells(cone_bipolar_cells, group_size=6, lambda
     return small_bistratified_ganglion_cells
 
 
-# TODO: Temporary code block to test these cells. Input and output should be through files (which can be used for the demo)
+# Temporary code block to test these cells. Input and output should be through files (which can be used for the demo)
 def test():
     p = argparse.ArgumentParser()
-    p.add_argument("--out_csv", default="/Users/akhilreddy/IdeaProjects/beads/out/visual/midget_out.csv")
+    p.add_argument("--out_csv", default="/Users/akhilreddy/IdeaProjects/beads/out/visual/small_bistratified_out.csv")
     args = p.parse_args()
 
     with open('/Users/akhilreddy/IdeaProjects/beads/out/visual/cone_bipolar.pkl', 'rb') as file:
         cone_bipolar_cells = pickle.load(file)
     print("Loaded CB Objects")
 
+    """
     midget_cells = initialize_midget_cells(cone_bipolar_cells)
 
     records = []
@@ -455,7 +456,7 @@ def test():
         response = c.function()
         records.append({
             "idx": idx,
-            "center": float(c.center),
+            "center": c.center,
             "integrated_signal": float(c.integrated_signal),
             "threshold": float(c.threshold),
             "response": response
@@ -466,7 +467,6 @@ def test():
         # noinspection PyTypeChecker
         pickle.dump(midget_cells, file)
 
-    """"
     parasol_cells = initialize_parasol_cells(cone_bipolar_cells)
 
     records = []
@@ -475,7 +475,7 @@ def test():
         response = c.function()
         records.append({
             "idx": idx,
-            "center": float(c.center),
+            "center": c.center,
             "integrated_signal": float(c.integrated_signal),
             "threshold": float(c.threshold),
             "response": response
@@ -485,7 +485,7 @@ def test():
     with open('/Users/akhilreddy/IdeaProjects/beads/out/visual/parasol.pkl', 'wb') as file:
         # noinspection PyTypeChecker
         pickle.dump(parasol_cells, file)
-        
+    """
     small_bistratified_cells = initialize_small_bistratified_cells(cone_bipolar_cells)
 
     records = []
@@ -494,7 +494,7 @@ def test():
         response = c.function()
         records.append({
             "idx": idx,
-            "center": float(c.center),
+            "center": c.center,
             "integrated_signal": float(c.integrated_signal),
             "threshold": float(c.threshold),
             "response": response
@@ -504,7 +504,7 @@ def test():
     with open('/Users/akhilreddy/IdeaProjects/beads/out/visual/small_bistratified.pkl', 'wb') as file:
         # noinspection PyTypeChecker
         pickle.dump(small_bistratified_cells, file)
-    """
+
     df = pd.DataFrame.from_records(records)
     df.to_csv(args.out_csv, index=False)
     print(f"Wrote CSV: {args.out_csv}  (n_cells = {len(df)})")
