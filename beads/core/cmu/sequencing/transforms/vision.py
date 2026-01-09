@@ -159,42 +159,53 @@ def unit_vector(angle):
     return np.array([np.cos(angle), np.sin(angle)])
 
 
-def cluster_bipolar_cells_upto_distance(bipolar_cells, distance_threshold=50.0,
-                                        min_cluster_size=0):  # distance is in microns
+def cluster_bipolar_cells_upto_distance(bipolar_cells, distance_threshold=50.0, min_cluster_size=0):
     """
-    Group bipolar cells into clusters based on their (x, y) positions.
-
-    This simple greedy algorithm iterates through the list of bipolar cells and
-    assigns each cell to an existing cluster if its distance from the cluster's centroid
-    is below the threshold. Otherwise, it starts a new cluster.
+    Cluster bipolar cells by spatial proximity using a neighbor-graph connected-component
+    approach. Skips cells with cell_type == 'OFF' (as in your original).
 
     Args:
-        bipolar_cells (list): List of bipolar cell objects (each must have .x and .y attributes).
-        distance_threshold (float): Maximum distance (in same units as x,y) for grouping.
-        min_cluster_size (int): Minimum number of cells for a cluster to be used.
+        bipolar_cells (list): objects with .x and .y (and .cell_type).
+        distance_threshold (float): max distance (microns) to consider two cells neighbors.
+        min_cluster_size (int): minimum size to keep a cluster; smaller clusters are discarded.
 
     Returns:
-        list: A list of clusters, where each cluster is a list of bipolar cells.
+        list[list[bipolar_cell]]: clusters (each cluster is a list of bipolar cell objects).
     """
+    # Filter out OFF cells (preserve order mapping)
+    candidates = [b for b in bipolar_cells if getattr(b, 'cell_type', None) != 'OFF']
+    if not candidates:
+        return []
+
+    # Build point array
+    pts = np.asarray([[float(b.x), float(b.y)] for b in candidates], dtype=np.float64)
+
+    # Build KD-tree and get neighbor lists (indices into 'candidates')
+    tree = KDTree(pts)
+    neighbors = tree.query_ball_point(pts, r=float(distance_threshold), workers=-1)
+
+    N = len(candidates)
+    visited = np.zeros(N, dtype=bool)
     clusters = []
 
-    for cell in bipolar_cells:
-        if cell.cell_type == 'OFF':  # Avoid OFF cells for directional weighting
+    # Connected-component search (BFS/stack)
+    for i in range(N):
+        if visited[i]:
             continue
-        cell_pos = np.array([cell.x, cell.y])
-        added = False
-        # Try to add the cell to an existing cluster.
-        for cluster in clusters:
-            # Compute cluster centroid.
-            positions = np.array([[b.x, b.y] for b in cluster])
-            centroid = np.mean(positions, axis=0)
-            distance = np.linalg.norm(cell_pos - centroid)
-            if distance <= distance_threshold:
-                cluster.append(cell)
-                added = True
-                break
-        if not added:
-            clusters.append([cell])
+        stack = [i]
+        comp_idx = []
+        while stack:
+            u = stack.pop()
+            if visited[u]:
+                continue
+            visited[u] = True
+            comp_idx.append(u)
+            for v in neighbors[u]:
+                if not visited[v]:
+                    stack.append(v)
+        # Keep cluster only if it meets min size
+        if len(comp_idx) >= max(1, int(min_cluster_size)):
+            clusters.append([candidates[j] for j in comp_idx])
 
     return clusters
 
