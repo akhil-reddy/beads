@@ -2,6 +2,7 @@ import argparse
 import pickle
 import numpy as np
 import pandas as pd
+from scipy.spatial import KDTree
 from sklearn.neighbors import radius_neighbors_graph
 from scipy.sparse.csgraph import connected_components
 
@@ -182,45 +183,54 @@ class UnionFind:
                 self.r[ra] += 1
 
 
-def cluster_bipolar_cells_upto_distance(bipolar_cells, distance_threshold=50.0, min_cluster_size=1, skip_off=True):
-    # build positions as float32 to halve memory
-    # defensive checks
-    if bipolar_cells is None:
+def cluster_bipolar_cells_upto_distance(bipolar_cells, distance_threshold=50.0,
+                                        min_cluster_size=0):
+    """
+    Cluster bipolar cells by spatial proximity using a neighbor-graph connected-component
+    approach. Skips cells with cell_type == 'OFF' (as in your original).
+
+    Args:
+        bipolar_cells (list): objects with .x and .y (and .cell_type).
+        distance_threshold (float): max distance (microns) to consider two cells neighbors.
+        min_cluster_size (int): minimum size to keep a cluster; smaller clusters are discarded.
+
+    Returns:
+        list[list[bipolar_cell]]: clusters (each cluster is a list of bipolar cell objects).
+    """
+    # Filter out OFF cells (preserve order mapping)
+    candidates = [b for b in bipolar_cells if getattr(b, 'cell_type', None) != 'OFF']
+    if not candidates:
         return []
-    if not hasattr(bipolar_cells, "__len__"):
-        raise TypeError("bipolar_cells must be a sequence, not %r" % type(bipolar_cells))
 
-    # build positions with explicit comprehension (guarantees sequence)
-    pts_all = np.asarray([[float(getattr(b, 'x', 0.0)), float(getattr(b, 'y', 0.0))] for b in bipolar_cells],
-                         dtype=np.float32)
-    N = pts_all.shape[0]
-    if N == 0:
-        return []
+    # Build point array
+    pts = np.asarray([[float(b.x), float(b.y)] for b in candidates], dtype=np.float64)
 
-    # compute mask via comprehension -> always an array, never a scalar bool
-    if skip_off:
-        mask_list = [getattr(b, 'cell_type', None) != 'OFF' for b in bipolar_cells]
-        mask = np.asarray(mask_list, dtype=bool)
-        indices = np.nonzero(mask)[0]
-        if indices.size == 0:
-            return []
-        pts = pts_all[indices]
-    else:
-        indices = np.arange(N, dtype=int)
-        pts = pts_all
+    # Build KD-tree and get neighbor lists (indices into 'candidates')
+    tree = KDTree(pts)
+    neighbors = tree.query_ball_point(pts, r=float(distance_threshold), workers=-1)
 
-    # build sparse radius graph
-    A = radius_neighbors_graph(pts.astype('float32'), radius=float(distance_threshold), mode='connectivity', n_jobs=1)
-    A = A.maximum(A.T)
-    n_components, labels = connected_components(A, directed=False, return_labels=True)
-
+    N = len(candidates)
+    visited = np.zeros(N, dtype=bool)
     clusters = []
-    for c in range(n_components):
-        labels = np.atleast_1d(np.asarray(labels))  # ensure 1-D array
-        members = np.nonzero(labels == int(c))[0]
-        if members.size >= max(1, min_cluster_size):
-            orig_indices = indices[members]
-            clusters.append([bipolar_cells[i] for i in orig_indices.tolist()])
+
+    # TODO: Error in Connected-component search (BFS/stack)
+    for i in range(N):
+        if visited[i]:
+            continue
+        stack = [i]
+        comp_idx = []
+        while stack:
+            u = stack.pop()
+            if visited[u]:
+                continue
+            visited[u] = True
+            comp_idx.append(u)
+            for v in neighbors[u]:
+                if not visited[v]:
+                    stack.append(v)
+        # Keep cluster only if it meets min size
+        if len(comp_idx) >= max(1, int(min_cluster_size)):
+            clusters.append([candidates[j] for j in comp_idx])
 
     return clusters
 
@@ -437,7 +447,7 @@ class RemappingUnpickler(pickle.Unpickler):
         return super().find_class(module, name)
 
 
-# TODO: Temporary code block to test these cells. Input and output should be through files (which can be used for the demo)
+# Temporary code block to test these cells. Input and output should be through files (which can be used for the demo)
 def test():
     p = argparse.ArgumentParser()
     p.add_argument("--out_csv", default="/Users/akhilreddy/IdeaProjects/beads/out/visual/starburst_out.csv")
