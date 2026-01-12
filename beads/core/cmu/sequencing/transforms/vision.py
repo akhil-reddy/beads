@@ -2,7 +2,8 @@ import argparse
 import pickle
 import numpy as np
 import pandas as pd
-from scipy.spatial import KDTree
+from sklearn.neighbors import radius_neighbors_graph
+from scipy.sparse.csgraph import connected_components
 
 from beads.core.cmu.sequencing.combine.vision import Bipolar, Horizontal
 
@@ -159,53 +160,67 @@ def unit_vector(angle):
     return np.array([np.cos(angle), np.sin(angle)])
 
 
-def cluster_bipolar_cells_upto_distance(bipolar_cells, distance_threshold=50.0, min_cluster_size=0):
-    """
-    Cluster bipolar cells by spatial proximity using a neighbor-graph connected-component
-    approach. Skips cells with cell_type == 'OFF' (as in your original).
+class UnionFind:
+    def __init__(self, n):
+        self.p = list(range(n))
+        self.r = [0] * n
 
-    Args:
-        bipolar_cells (list): objects with .x and .y (and .cell_type).
-        distance_threshold (float): max distance (microns) to consider two cells neighbors.
-        min_cluster_size (int): minimum size to keep a cluster; smaller clusters are discarded.
+    def find(self, a):
+        while self.p[a] != a:
+            self.p[a] = self.p[self.p[a]]
+            a = self.p[a]
+        return a
 
-    Returns:
-        list[list[bipolar_cell]]: clusters (each cluster is a list of bipolar cell objects).
-    """
-    # Filter out OFF cells (preserve order mapping)
-    candidates = [b for b in bipolar_cells if getattr(b, 'cell_type', None) != 'OFF']
-    if not candidates:
+    def union(self, a, b):
+        ra, rb = self.find(a), self.find(b)
+        if ra == rb: return
+        if self.r[ra] < self.r[rb]:
+            self.p[ra] = rb
+        else:
+            self.p[rb] = ra
+            if self.r[ra] == self.r[rb]:
+                self.r[ra] += 1
+
+
+def cluster_bipolar_cells_upto_distance(bipolar_cells, distance_threshold=50.0, min_cluster_size=1, skip_off=True):
+    # build positions as float32 to halve memory
+    # defensive checks
+    if bipolar_cells is None:
+        return []
+    if not hasattr(bipolar_cells, "__len__"):
+        raise TypeError("bipolar_cells must be a sequence, not %r" % type(bipolar_cells))
+
+    # build positions with explicit comprehension (guarantees sequence)
+    pts_all = np.asarray([[float(getattr(b, 'x', 0.0)), float(getattr(b, 'y', 0.0))] for b in bipolar_cells],
+                         dtype=np.float32)
+    N = pts_all.shape[0]
+    if N == 0:
         return []
 
-    # Build point array
-    pts = np.asarray([[float(b.x), float(b.y)] for b in candidates], dtype=np.float64)
+    # compute mask via comprehension -> always an array, never a scalar bool
+    if skip_off:
+        mask_list = [getattr(b, 'cell_type', None) != 'OFF' for b in bipolar_cells]
+        mask = np.asarray(mask_list, dtype=bool)
+        indices = np.nonzero(mask)[0]
+        if indices.size == 0:
+            return []
+        pts = pts_all[indices]
+    else:
+        indices = np.arange(N, dtype=int)
+        pts = pts_all
 
-    # Build KD-tree and get neighbor lists (indices into 'candidates')
-    tree = KDTree(pts)
-    neighbors = tree.query_ball_point(pts, r=float(distance_threshold), workers=-1)
+    # build sparse radius graph
+    A = radius_neighbors_graph(pts.astype('float32'), radius=float(distance_threshold), mode='connectivity', n_jobs=1)
+    A = A.maximum(A.T)
+    n_components, labels = connected_components(A, directed=False, return_labels=True)
 
-    N = len(candidates)
-    visited = np.zeros(N, dtype=bool)
     clusters = []
-
-    # Connected-component search (BFS/stack)
-    for i in range(N):
-        if visited[i]:
-            continue
-        stack = [i]
-        comp_idx = []
-        while stack:
-            u = stack.pop()
-            if visited[u]:
-                continue
-            visited[u] = True
-            comp_idx.append(u)
-            for v in neighbors[u]:
-                if not visited[v]:
-                    stack.append(v)
-        # Keep cluster only if it meets min size
-        if len(comp_idx) >= max(1, int(min_cluster_size)):
-            clusters.append([candidates[j] for j in comp_idx])
+    for c in range(n_components):
+        labels = np.atleast_1d(np.asarray(labels))  # ensure 1-D array
+        members = np.nonzero(labels == int(c))[0]
+        if members.size >= max(1, min_cluster_size):
+            orig_indices = indices[members]
+            clusters.append([bipolar_cells[i] for i in orig_indices.tolist()])
 
     return clusters
 
@@ -266,7 +281,7 @@ class StarburstAmacrine:
                 contributions.append(np.zeros(4))
                 continue
             # Weight is bipolar output times an exponential decay based on distance.
-            weight = b.processed_stimulus * exponential_decay(r, self.lambda_r)
+            weight = b.get_output() * exponential_decay(r, self.lambda_r)
             unit_r_vec = r_vec / r
             # Project onto 4 cardinal directions.
             proj = np.array([
@@ -334,7 +349,7 @@ class StarburstAmacrine:
 # Initialization Function for Starburst Amacrine Layer (with Radial Grouping)
 ###############################################################################
 
-def initialize_starburst_amacrine_cells(cone_bipolar_cells, distance_threshold=50.0, min_cluster_size=8,
+def initialize_starburst_amacrine_cells(cone_bipolar_cells, distance_threshold=10.0, min_cluster_size=8,
                                         lambda_r=50.0, nonlin_gain=10.0, nonlin_thresh=0.2, tau=0.05):
     """
     Group cone bipolar cells based on their (x,y) coordinates into clusters (focus areas).
@@ -352,7 +367,8 @@ def initialize_starburst_amacrine_cells(cone_bipolar_cells, distance_threshold=5
     Returns:
        starburst_cells: A list of starburst amacrine cells.
     """
-    clusters = cluster_bipolar_cells_upto_distance(cone_bipolar_cells, distance_threshold, min_cluster_size)
+    bipolar_cells = [b for b in cone_bipolar_cells if b.subtype in ['', 'M']]
+    clusters = cluster_bipolar_cells_upto_distance(bipolar_cells, distance_threshold, min_cluster_size)
     starburst_cells = []
     for cluster in clusters:
         sac = StarburstAmacrine(cluster, lambda_r=lambda_r, nonlin_gain=nonlin_gain,
@@ -379,7 +395,8 @@ def initialize_cone_bipolar_cells(horizontal_cells, aii_amacrine_cells):
 
     for h_cell in horizontal_cells:
         # Create an ON bipolar cell with typical parameter values
-        bipolar = Bipolar(h_cell.x, h_cell.y, cell_type='ON', subtype=h_cell.subtype, threshold=0.5, tau=0.07, gain=3.0, saturation=1.0)
+        bipolar = Bipolar(h_cell.x, h_cell.y, cell_type='ON', subtype=h_cell.subtype, threshold=0.5, tau=0.07, gain=3.0,
+                          saturation=1.0)
         zipped_cells.append((bipolar, h_cell))
         cone_bipolar_cells.append(bipolar)
 
@@ -420,11 +437,38 @@ class RemappingUnpickler(pickle.Unpickler):
         return super().find_class(module, name)
 
 
-# Temporary code block to test these cells. Input and output should be through files (which can be used for the demo)
+# TODO: Temporary code block to test these cells. Input and output should be through files (which can be used for the demo)
 def test():
     p = argparse.ArgumentParser()
-    p.add_argument("--out_csv", default="/Users/akhilreddy/IdeaProjects/beads/out/visual/cone_bipolar_out.csv")
+    p.add_argument("--out_csv", default="/Users/akhilreddy/IdeaProjects/beads/out/visual/starburst_out.csv")
     args = p.parse_args()
+
+    with open('/Users/akhilreddy/IdeaProjects/beads/out/visual/cone_bipolar.pkl', 'rb') as file:
+        cone_bipolar_cells = pickle.load(file)
+
+    starburst_cells = initialize_starburst_amacrine_cells(cone_bipolar_cells)
+
+    records = []
+    idx = 0
+    for s in starburst_cells:
+        response = s.function()
+        records.append({
+            "idx": idx,
+            "preferred_direction": response[0],
+            "centrifugal_output": response[1],
+            "net_vector": response[2]
+        })
+        idx += 1
+
+    with open('/Users/akhilreddy/IdeaProjects/beads/out/visual/starburst_amacrine.pkl', 'wb') as file:
+        # noinspection PyTypeChecker
+        pickle.dump(starburst_cells, file)
+
+    df = pd.DataFrame.from_records(records)
+    df.to_csv(args.out_csv, index=False)
+    print(f"Wrote CSV: {args.out_csv}  (n_cells = {len(df)})")
+
+    """
 
     horizontal_cells = deserialize_horizontal_cells('/Users/akhilreddy/IdeaProjects/beads/out/visual/horizontal.pkl')
     print("Loaded H Objects")
@@ -454,8 +498,6 @@ def test():
     df = pd.DataFrame.from_records(records)
     df.to_csv(args.out_csv, index=False)
     print(f"Wrote CSV: {args.out_csv}  (n_cells = {len(df)})")
-
-    """"
 
     with open('/Users/akhilreddy/IdeaProjects/beads/out/visual/rod_bipolar.pkl', 'rb') as file:
         rod_bipolar_cells = pickle.load(file)
