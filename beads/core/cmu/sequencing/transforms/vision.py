@@ -431,7 +431,7 @@ def initialize_starburst_amacrine_cells(cone_bipolar_cells, lambda_r=50.0, nonli
        starburst_cells: A list of starburst amacrine cells.
     """
     bipolar_cells = [b for b in cone_bipolar_cells if b.subtype in ['', 'M']]
-    # TODO: 356 >= group_size > 1568
+    # 356 >= group_size > 1568
     clusters = cluster_bipolar_upto_group_size(bipolar_cells, group_size=356)  # some napkin math for estimating a 50 micron radius
     starburst_cells = []
     for cluster in clusters:

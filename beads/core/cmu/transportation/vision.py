@@ -438,15 +438,15 @@ def initialize_small_bistratified_cells(cone_bipolar_cells, group_size=6, lambda
     return small_bistratified_ganglion_cells
 
 
-# TODO: Temporary code block to test these cells. Input and output should be through files (which can be used for the demo)
+# Temporary code block to test these cells. Input and output should be through files (which can be used for the demo)
 def test():
     p = argparse.ArgumentParser()
-    p.add_argument("--out_csv", default="/Users/akhilreddy/IdeaProjects/beads/out/visual/small_bistratified_out.csv")
+    p.add_argument("--out_csv", default="/Users/akhilreddy/IdeaProjects/beads/out/visual/dsgc_out.csv")
     args = p.parse_args()
 
-    with open('/Users/akhilreddy/IdeaProjects/beads/out/visual/cone_bipolar.pkl', 'rb') as file:
-        cone_bipolar_cells = pickle.load(file)
-    print("Loaded CB Objects")
+    with open('/Users/akhilreddy/IdeaProjects/beads/out/visual/starburst_amacrine.pkl', 'rb') as file:
+        starburst_cells = pickle.load(file)
+    print("Loaded S Objects")
 
     """
     midget_cells = initialize_midget_cells(cone_bipolar_cells)
@@ -486,7 +486,7 @@ def test():
     with open('/Users/akhilreddy/IdeaProjects/beads/out/visual/parasol.pkl', 'wb') as file:
         # noinspection PyTypeChecker
         pickle.dump(parasol_cells, file)
-    """
+    
     small_bistratified_cells = initialize_small_bistratified_cells(cone_bipolar_cells)
 
     records = []
@@ -505,6 +505,27 @@ def test():
     with open('/Users/akhilreddy/IdeaProjects/beads/out/visual/small_bistratified.pkl', 'wb') as file:
         # noinspection PyTypeChecker
         pickle.dump(small_bistratified_cells, file)
+    """
+    dsgc = initialize_DSGCs(starburst_cells)
+
+    records = []
+    idx = 0
+
+    # TODO: Complete this
+    for c in dsgc:
+        response = c.function()
+        records.append({
+            "idx": idx,
+            "center": c.center,
+            "integrated_signal": float(c.integrated_signal),
+            "threshold": float(c.threshold),
+            "response": response
+        })
+        idx += 1
+
+    with open('/Users/akhilreddy/IdeaProjects/beads/out/visual/small_bistratified.pkl', 'wb') as file:
+        # noinspection PyTypeChecker
+        pickle.dump(dsgc, file)
 
     df = pd.DataFrame.from_records(records)
     df.to_csv(args.out_csv, index=False)
