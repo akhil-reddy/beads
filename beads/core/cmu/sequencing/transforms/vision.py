@@ -183,54 +183,110 @@ class UnionFind:
                 self.r[ra] += 1
 
 
-def cluster_bipolar_cells_upto_distance(bipolar_cells, distance_threshold=50.0,
-                                        min_cluster_size=0):
+def cluster_bipolar_upto_group_size(bipolar_cells, group_size=8, channel_type=None, leafsize=16, subtypes=None):
     """
-    Cluster bipolar cells by spatial proximity using a neighbor-graph connected-component
-    approach. Skips cells with cell_type == 'OFF' (as in your original).
+    Efficient greedy clustering by spatial proximity.
 
-    Args:
-        bipolar_cells (list): objects with .x and .y (and .cell_type).
-        distance_threshold (float): max distance (microns) to consider two cells neighbors.
-        min_cluster_size (int): minimum size to keep a cluster; smaller clusters are discarded.
+    - bipolar_cells: list of objects with .x and .y
+    - group_size: desired max size per cluster (>=1)
+    - channel_type: None (all cells) OR a string (attribute name to match) OR a callable(cell)->bool
+    - leafsize: cKDTree parameter (tune for your data size)
 
-    Returns:
-        list[list[bipolar_cell]]: clusters (each cluster is a list of bipolar cell objects).
+    Returns: list of clusters (each cluster is a list of bipolar cell objects).
     """
-    # Filter out OFF cells (preserve order mapping)
-    candidates = [b for b in bipolar_cells if getattr(b, 'cell_type', None) != 'OFF']
-    if not candidates:
+    if subtypes is not None:
+        bipolar_cells = [b for b in bipolar_cells if b.subtype in subtypes]
+
+    if group_size <= 1:
+        # trivial clusters: each cell is its own cluster
+        return [[b] for b in bipolar_cells]
+
+    N = len(bipolar_cells)
+    if N == 0:
         return []
 
-    # Build point array
-    pts = np.asarray([[float(b.x), float(b.y)] for b in candidates], dtype=np.float64)
+    # Build arrays of positions
+    pts = np.empty((N, 2), dtype=np.float64)
+    for i, b in enumerate(bipolar_cells):
+        pts[i, 0] = float(b.x)
+        pts[i, 1] = float(b.y)
 
-    # Build KD-tree and get neighbor lists (indices into 'candidates')
-    tree = KDTree(pts)
-    neighbors = tree.query_ball_point(pts, r=float(distance_threshold), workers=-1)
+    # Build an index list of cells to cluster (respecting channel_type if provided)
+    if channel_type is None:
+        indices = np.arange(N, dtype=int)
+    else:
+        if callable(channel_type):
+            mask = np.fromiter((1 if channel_type(b) else 0 for b in bipolar_cells), dtype=np.bool_, count=N)
+        else:
+            # treat channel_type as attribute value to match (attribute name 'channel' or 'channel_type' fallback)
+            def _matches(b):
+                # try common attribute names
+                val = getattr(b, 'channel_type', None)
+                if val is None:
+                    val = getattr(b, 'channel', None)
+                return val == channel_type
+            mask = np.fromiter((1 if _matches(b) else 0 for b in bipolar_cells), dtype=np.bool_, count=N)
 
-    N = len(candidates)
-    visited = np.zeros(N, dtype=bool)
+        indices = np.nonzero(mask)[0]
+
+    M = len(indices)
+    if M == 0:
+        return []
+
+    sub_pts = pts[indices]
+
+    # k for initial neighbor lookup: at least group_size (include self)
+    k0 = min(group_size, M)
+
+    tree = KDTree(sub_pts, leafsize=leafsize)
+
+    # precompute k-nearest neighbors for each candidate (indices are into sub_pts)
+    # result shape: (M, k0)
+    _, neighbors = tree.query(sub_pts, k=k0, workers=-1)
+
+    # normalize neighbors to 2D array (if k0 == 1, query returns shape (M,), so force 2D)
+    neighbors = np.atleast_2d(neighbors)
+
+    assigned = np.zeros(M, dtype=bool)
     clusters = []
 
-    # TODO: Error in Connected-component search (BFS/stack)
-    for i in range(N):
-        if visited[i]:
+    # iterate through candidates in index order (greedy)
+    for i_sub in range(M):
+        if assigned[i_sub]:
             continue
-        stack = [i]
-        comp_idx = []
-        while stack:
-            u = stack.pop()
-            if visited[u]:
+
+        # choose seed i_sub and collect up to group_size-1 nearest unassigned neighbors
+        chosen = []
+        for j in neighbors[i_sub]:
+            j = int(j)
+            if j == i_sub:
                 continue
-            visited[u] = True
-            comp_idx.append(u)
-            for v in neighbors[u]:
-                if not visited[v]:
-                    stack.append(v)
-        # Keep cluster only if it meets min size
-        if len(comp_idx) >= max(1, int(min_cluster_size)):
-            clusters.append([candidates[j] for j in comp_idx])
+            if not assigned[j]:
+                chosen.append(j)
+                if len(chosen) >= group_size - 1:
+                    break
+
+        # if not enough neighbors found (because many were assigned), query more neighbors on-the-fly
+        if len(chosen) < group_size - 1 and M > k0:
+            # ask for a larger neighborhood (cap to M)
+            k_more = min(M, max(k0 * 4, group_size * 4))
+            _, neigh2 = tree.query(sub_pts[i_sub], k=k_more)
+            for j in np.atleast_1d(neigh2):
+                j = int(j)
+                if j == i_sub or assigned[j] or j in chosen:
+                    continue
+                chosen.append(j)
+                if len(chosen) >= group_size - 1:
+                    break
+
+        # form cluster (map sub-indices back to original bipolar_cells indices)
+        cluster_sub_indices = [i_sub] + chosen
+        orig_indices = indices[cluster_sub_indices].tolist()
+        cluster = [bipolar_cells[idx] for idx in orig_indices]
+        clusters.append(cluster)
+
+        # mark assigned
+        assigned[cluster_sub_indices] = True
 
     return clusters
 
@@ -359,16 +415,13 @@ class StarburstAmacrine:
 # Initialization Function for Starburst Amacrine Layer (with Radial Grouping)
 ###############################################################################
 
-def initialize_starburst_amacrine_cells(cone_bipolar_cells, distance_threshold=10.0, min_cluster_size=8,
-                                        lambda_r=50.0, nonlin_gain=10.0, nonlin_thresh=0.2, tau=0.05):
+def initialize_starburst_amacrine_cells(cone_bipolar_cells, lambda_r=50.0, nonlin_gain=10.0, nonlin_thresh=0.2, tau=0.05):
     """
     Group cone bipolar cells based on their (x,y) coordinates into clusters (focus areas).
     Create a starburst amacrine cell for each cluster.
 
     Args:
         cone_bipolar_cells (list): Cone bipolar cells with attributes: x, y, processed_stimulus
-        distance_threshold (float): Maximum distance for bipolar cells to be grouped into the same SAC.
-        min_cluster_size (int): Minimum number of bipolar cells required for a group.
         lambda_r: Parameters for the SAC model.
         nonlin_gain: Parameters for the SAC model.
         nonlin_thresh: Parameters for the SAC model.
@@ -378,7 +431,8 @@ def initialize_starburst_amacrine_cells(cone_bipolar_cells, distance_threshold=1
        starburst_cells: A list of starburst amacrine cells.
     """
     bipolar_cells = [b for b in cone_bipolar_cells if b.subtype in ['', 'M']]
-    clusters = cluster_bipolar_cells_upto_distance(bipolar_cells, distance_threshold, min_cluster_size)
+    # TODO: 356 >= group_size > 1568
+    clusters = cluster_bipolar_upto_group_size(bipolar_cells, group_size=356)  # some napkin math for estimating a 50 micron radius
     starburst_cells = []
     for cluster in clusters:
         sac = StarburstAmacrine(cluster, lambda_r=lambda_r, nonlin_gain=nonlin_gain,
