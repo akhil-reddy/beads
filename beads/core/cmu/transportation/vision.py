@@ -511,19 +511,17 @@ def test():
     records = []
     idx = 0
 
-    # TODO: Complete this
     for c in dsgc:
-        response = c.function()
+        spike_output = c.function()
         records.append({
             "idx": idx,
             "center": c.center,
             "integrated_signal": float(c.integrated_signal),
-            "threshold": float(c.threshold),
-            "response": response
+            "spike_output": float(spike_output),
         })
         idx += 1
 
-    with open('/Users/akhilreddy/IdeaProjects/beads/out/visual/small_bistratified.pkl', 'wb') as file:
+    with open('/Users/akhilreddy/IdeaProjects/beads/out/visual/dsgc.pkl', 'wb') as file:
         # noinspection PyTypeChecker
         pickle.dump(dsgc, file)
 
