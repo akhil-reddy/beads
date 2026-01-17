@@ -439,7 +439,7 @@ def initialize_small_bistratified_cells(cone_bipolar_cells, group_size=6, lambda
     return small_bistratified_ganglion_cells
 
 
-# TODO: Temporary code block to test these cells. Input and output should be through files (which can be used for the demo)
+# Temporary code block to test these cells. Input and output should be through files (which can be used for the demo)
 def test():
     p = argparse.ArgumentParser()
     p.add_argument("--out_csv", default="/Users/akhilreddy/IdeaProjects/beads/out/visual/dsgc_out.csv")
