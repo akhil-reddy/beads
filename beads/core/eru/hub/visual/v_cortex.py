@@ -790,7 +790,7 @@ class VisualCortex:
 
             return l4_spikes, feature_maps_aug
 
-
+    # TODO: This function needs to accept spikes from the transportation class
     def function(self, frames_lms):
         """
         frames_lms: (T,H,W,3) input - L,M,S or cone-like channels.
