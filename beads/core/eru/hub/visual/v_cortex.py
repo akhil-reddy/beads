@@ -1,4 +1,8 @@
+import argparse
+import os
+
 import numpy as np
+import pandas as pd
 from scipy.ndimage import gaussian_filter
 from scipy.signal import fftconvolve, convolve2d
 
@@ -28,6 +32,62 @@ def make_gabor(k_size, sigma, theta, lam, psi=0, gamma=0.5):
     gb = np.exp(-0.5 * (x_theta ** 2 + (gamma ** 2) * y_theta ** 2) / (sigma ** 2)) * np.cos(
         2 * np.pi * x_theta / lam + psi)
     return gb
+
+def rgc_spikes_to_frames(rgc_dict, T_bins, dt, H, W, tile_stride=(1,1)):
+    """
+    Convert RGC spike lists into pseudo-frames (T_bins, H, W, 3) ordered as [M, P, K].
+    rgc_dict: dict with optional keys 'parasol', 'midget', 'small_bi'. Each value is a list of per-cell spike-arrays.
+    If a channel's number of cells == H*W we map 1:1; otherwise we tile the cells into image tiles of size tile_stride.
+    Returns frames_lms shape (T_bins, H, W, 3)
+    """
+    Td = T_bins
+    frames = np.zeros((Td, H, W, 3), dtype=float)  # M,P,K
+
+    def fill_channel(lists, channel_idx):
+        if lists is None or len(lists) == 0:
+            return
+        n_cells = len(lists)
+        # quick bin -> matrix (n_cells, T)
+        mat = bin_spikes_to_matrix(lists, Td, dt)  # rows=cells, cols=time
+        if n_cells == H * W:
+            # one-to-one mapping
+            idx = 0
+            for i in range(H):
+                for j in range(W):
+                    frames[:, i, j, channel_idx] = mat[idx] / dt  # Hz
+                    idx += 1
+        else:
+            # tile pooling over tile_stride
+            tile_h, tile_w = tile_stride
+            n_tiles_h = (H + tile_h - 1) // tile_h
+            n_tiles_w = (W + tile_w - 1) // tile_w
+            cells_per_tile = max(1, n_cells // (n_tiles_h * n_tiles_w))
+            idx = 0
+            for ih in range(0, H, tile_h):
+                for jw in range(0, W, tile_w):
+                    tile_counts = np.zeros(Td, dtype=float)
+                    for c in range(cells_per_tile):
+                        if idx >= n_cells:
+                            break
+                        tile_counts += mat[idx]
+                        idx += 1
+                    i1 = min(H, ih + tile_h)
+                    j1 = min(W, jw + tile_w)
+                    if cells_per_tile > 0:
+                        rate_map = tile_counts / (dt * max(1, cells_per_tile))
+                    else:
+                        rate_map = tile_counts / max(1e-12, dt)
+                    for i2 in range(ih, i1):
+                        for j2 in range(jw, j1):
+                            frames[:, i2, j2, channel_idx] = rate_map
+
+    # channels mapping
+    fill_channel(rgc_dict.get('parasol'), 0)   # M (magno-like)
+    fill_channel(rgc_dict.get('midget'), 1)    # P (parvo-like)
+    fill_channel(rgc_dict.get('small_bi'), 2)  # K (konio-like)
+
+    # Optionally normalize per-channel if desired (keep as rates by default)
+    return frames
 
 
 class VisualSTRF:
@@ -594,6 +654,7 @@ class VisualCortex:
     """
 
     def __init__(self, H=64, W=64, fs=100.0, n_v1_units=36):
+        self.function = None
         self.H = H
         self.W = W
         self.fs = fs
@@ -639,145 +700,94 @@ class VisualCortex:
                                               voltage_dependent=True))
             v1.units.append(unit)
 
-        def function(frames_lms, dsgc_spike_lists=None, dsgc_dir_count=None, dsgc_tile_stride=(1,1),
-                     dsgc_smoothing_sigma=1.0, dsgc_normalize=True):
+        def function(frames_lms=None, rgc_spike_dict=None, dsgc_spike_lists=None, dsgc_dir_count=None,
+                    dsgc_tile_stride=(1,1), dsgc_smoothing_sigma=1.0, dsgc_normalize=True):
             """
-            frames_lms: (T,H,W,3) input (L,M,S)
-            dsgc_spike_lists: optional list of length D (directions). Each element is a list of per-DSGC arrays (spike times in s).
-                               If None, no motion channel is added.
-            dsgc_dir_count: optional int (D). If None, inferred from dsgc_spike_lists.
-            returns: l4_spike_lists, feature_maps (feature_maps will include appended motion features if DSGCs supplied)
+            Flexible processing entry:
+              - Either provide frames_lms (T,H,W,3) directly, OR
+              - provide rgc_spike_dict { 'parasol': [...], 'midget': [...], 'small_bi': [...] }
+                along with Td/dt derived below to synthesize frames.
+            Optionally provide DSGC spike lists to augment motion features (same semantics as before).
+            Returns: l4_spike_lists, feature_maps (motion-augmented if DSGC provided)
             """
+            # If spike-based input provided, synthesize frames first
+            # We need Td (T_out) and dt to align with LGN temporal kernels:
+            # We'll approximate using self.lgn kernels lengths to compute Td.
+            # Use a conservative dt = 1.0 / self.fs
+            dt = 1.0 / self.fs
+
+            if frames_lms is None:
+                if rgc_spike_dict is None:
+                    raise ValueError("Either frames_lms or rgc_spike_dict must be provided.")
+                # Determine T_bins based on desired output length. Choose T_bins = some length (user should pick)
+                # Here we infer Td from the longest kernel length in LGN to be safe:
+                max_klen = max(len(self.lgn.kernel_M), len(self.lgn.kernel_P), len(self.lgn.kernel_K))
+                # user facing T_bins should be provided in rgc_spike_dict under key '_T_bins' optional; else require an estimate
+                T_bins = rgc_spike_dict.get('_T_bins') if isinstance(rgc_spike_dict, dict) and ('_T_bins' in rgc_spike_dict) else None
+                if T_bins is None:
+                    # fallback infer from latest spike time seen (coarse)
+                    max_time = 0.0
+                    for ch in ('parasol','midget','small_bi'):
+                        lists = rgc_spike_dict.get(ch) if rgc_spike_dict else None
+                        if not lists:
+                            continue
+                        for arr in lists:
+                            if len(arr):
+                                max_time = max(max_time, np.max(arr))
+                    if max_time <= 0.0:
+                        # default small duration
+                        max_time = 1.0
+                    # we produce T_bins such that T_bins*dt >= max_time + max_klen*dt
+                    T_bins = int(np.ceil((max_time + max_klen * dt) / dt))
+                # build frames (T_bins, H, W, 3)
+                frames_lms = rgc_spikes_to_frames(rgc_spike_dict, T_bins, dt, self.H, self.W, tile_stride=dsgc_tile_stride)
+
             # 1) LGN -> get M,P,K streams (T_out,H,W)
             lgn_out = self.lgn.function(frames_lms)
             T_out = lgn_out['M'].shape[0]     # temporal length after LGN temporal filtering
             # pack streams into channels (T_out,H,W,3) ordering [M,P,K]
             channels = np.stack([lgn_out['M'], lgn_out['P'], lgn_out['K']], axis=-1)  # (T_out,H,W,3)
 
-            # 2) If no DSGC motion input provided, compute feature maps and exit normally
-            #    Otherwise compute motion_maps aligned to LGN frame grid, convert to motion features,
-            #    and append those features to feature_maps (so VisualSTRF doesn't need to be re-instantiated).
-            # compute base feature maps from color streams
+            # 2) compute base feature maps from color streams
             feature_maps = v1.strf.function(channels)   # (T_feat, F_total, H, W)
             T_feat = feature_maps.shape[0]
             F_total = feature_maps.shape[1]
             F_spat = v1.strf.F_spat
             temporal_kernel = v1.strf.temporal
-            dt = 1.0 / self.fs
 
-            if dsgc_spike_lists is None:
-                # no motion augmentation requested
-                l4_spikes = []
-                for u in v1.units:
-                    l4u = L4Unit(f_idx=u['f_idx'], center=u['center'],
-                                 neuron_params=neuron_params, syn_params=syn_params,
-                                 pool_radius=1, amp=30.0, cell_type=u['cell_type'])
-                    l4u.neu = u['neu']
-                    l4u.syn = u['syn']
-                    spikes = l4u.function(feature_maps, burst_gain=lgn_out['burst_gain'], modulation=1.0)
-                    l4_spikes.append(spikes)
-                return l4_spikes, feature_maps
+            # 3) If DSGC (motion) is provided, compute motion features & append (same code as before)
+            if dsgc_spike_lists is not None:
+                if dsgc_dir_count is None:
+                    dsgc_dir_count = len(dsgc_spike_lists)
+                D = dsgc_dir_count
+                Td = T_out
+                motion_maps = np.zeros((Td, D, self.H, self.W), dtype=float)
+                # reuse dsgc_spike_lists_to_motion_maps helper to make motion_maps (it handles tiling)
+                motion_maps = dsgc_spike_lists_to_motion_maps(dsgc_spike_lists, T_bins=Td, dt=dt, H=self.H, W=self.W,
+                                                              dir_count=D, tile_stride=dsgc_tile_stride,
+                                                              smoothing_sigma=dsgc_smoothing_sigma, normalize=dsgc_normalize)
+                # collapse directions -> motion channel
+                motion_channel = motion_maps.mean(axis=1)  # (T_out, H, W)
 
-            # --- DSGC provided: build motion maps ---
-            # infer direction count
-            if dsgc_dir_count is None:
-                dsgc_dir_count = len(dsgc_spike_lists)
+                # compute spatial responses of motion_channel for each spatial filter
+                Tt = len(temporal_kernel)
+                T_feat_expected = T_out - Tt + 1
+                T_feat = min(T_feat, T_feat_expected)
+                spat_motion = np.zeros((T_out, F_spat, self.H, self.W))
+                for t in range(T_out):
+                    for f in range(F_spat):
+                        spat_motion[t, f] = convolve2d(motion_channel[t], v1.strf.bank[f], mode='same', boundary='symm')
 
-            # helper: bin DSGC spike lists per direction into (T_out, H, W) rate maps
-            # Expect each element of dsgc_spike_lists to be a list of per-DSGC arrays.
-            # We'll attempt to tile DSGCs onto the HxW grid if counts match, otherwise use tile_stride pooling.
-            from scipy.ndimage import gaussian_filter  # local import safe inside function
-
-            D = dsgc_dir_count
-            Td = T_out
-            motion_maps = np.zeros((Td, D, self.H, self.W), dtype=float)
-
-            for d in range(D):
-                lists = dsgc_spike_lists[d]
-                n_cells = len(lists)
-                # if a one-to-one mapping exists: n_cells == H*W
-                if n_cells == self.H * self.W:
-                    idx = 0
+                motion_features = np.zeros((T_feat, F_spat, self.H, self.W))
+                for f in range(F_spat):
                     for i in range(self.H):
                         for j in range(self.W):
-                            times = lists[idx] if idx < n_cells else np.array([])
-                            idx += 1
-                            if len(times):
-                                bins = np.floor(np.asarray(times) / dt).astype(int)
-                                bins = bins[(bins >= 0) & (bins < Td)]
-                                if bins.size:
-                                    counts = np.bincount(bins, minlength=Td)
-                                    motion_maps[:, d, i, j] = counts / dt
-                else:
-                    # fallback: tile the image and pool DSGCs per tile
-                    tile_h, tile_w = dsgc_tile_stride
-                    n_tiles_h = (self.H + tile_h - 1) // tile_h
-                    n_tiles_w = (self.W + tile_w - 1) // tile_w
-                    cells_per_tile = max(1, n_cells // (n_tiles_h * n_tiles_w))
-                    idx = 0
-                    for ih in range(0, self.H, tile_h):
-                        for jw in range(0, self.W, tile_w):
-                            tile_counts = np.zeros(Td, dtype=float)
-                            for c in range(cells_per_tile):
-                                if idx >= n_cells:
-                                    break
-                                times = lists[idx]
-                                idx += 1
-                                if len(times):
-                                    bins = np.floor(np.asarray(times) / dt).astype(int)
-                                    bins = bins[(bins >= 0) & (bins < Td)]
-                                    if bins.size:
-                                        tile_counts += np.bincount(bins, minlength=Td)
-                            i1 = min(self.H, ih + tile_h)
-                            j1 = min(self.W, jw + tile_w)
-                            if cells_per_tile > 0:
-                                rate_map = tile_counts / (dt * cells_per_tile)
-                            else:
-                                rate_map = tile_counts / max(1e-12, dt)
-                            for i2 in range(ih, i1):
-                                for j2 in range(jw, j1):
-                                    motion_maps[:, d, i2, j2] = rate_map
+                            motion_features[:, f, i, j] = np.convolve(spat_motion[:, f, i, j], temporal_kernel, mode='valid')[:T_feat]
 
-            # smoothing & normalize
-            if dsgc_smoothing_sigma is not None and dsgc_smoothing_sigma > 0:
-                for t in range(Td):
-                    for d in range(D):
-                        motion_maps[t, d] = gaussian_filter(motion_maps[t, d], sigma=dsgc_smoothing_sigma)
-            if dsgc_normalize:
-                # normalize each direction's map to unit max
-                maxv = motion_maps.max(axis=(0,2,3), keepdims=True) + 1e-12
-                motion_maps = motion_maps / maxv
+                # append along feature axis
+                feature_maps = np.concatenate([feature_maps[:T_feat], motion_features], axis=1)
 
-            # collapse direction axis to a single motion channel (simple average across directions)
-            motion_channel = motion_maps.mean(axis=1)  # (T_out, H, W)
-
-            # --- convert motion channel into motion feature-block (apply same spatial bank + temporal kernel) ---
-            # spatial conv per spatial-filter
-            Tt = len(temporal_kernel)
-            T_feat_expected = T_out - Tt + 1
-            if T_feat_expected != T_feat:
-                # consistent alignment: we computed feature_maps from channels (T_out->T_feat); T_feat_expected should match
-                T_feat = min(T_feat, T_feat_expected)
-
-            # compute spatial responses of motion_channel for each spatial filter
-            # spat_motion: (T_out, F_spat, H, W)
-            spat_motion = np.zeros((T_out, F_spat, self.H, self.W))
-            for t in range(T_out):
-                for f in range(F_spat):
-                    spat_motion[t, f] = convolve2d(motion_channel[t], v1.strf.bank[f], mode='same', boundary='symm')
-
-            # temporal conv per (f, i, j) -> motion_features: (T_feat, F_spat, H, W)
-            motion_features = np.zeros((T_feat, F_spat, self.H, self.W))
-            for f in range(F_spat):
-                for i in range(self.H):
-                    for j in range(self.W):
-                        motion_features[:, f, i, j] = np.convolve(spat_motion[:, f, i, j], temporal_kernel, mode='valid')[:T_feat]
-
-            # reshape motion_features into a feature-block matching packing convention: append along feature axis
-            # feature_maps currently (T_feat, F_total, H, W). Append motion block of size F_spat along axis=1
-            feature_maps_aug = np.concatenate([feature_maps, motion_features], axis=1)  # new F = F_total + F_spat
-
-            # 3) run each L4 unit on augmented feature maps
+            # 4) run each L4 unit on (possibly augmented) feature_maps
             l4_spikes = []
             for u in v1.units:
                 l4u = L4Unit(f_idx=u['f_idx'], center=u['center'],
@@ -785,45 +795,11 @@ class VisualCortex:
                              pool_radius=1, amp=30.0, cell_type=u['cell_type'])
                 l4u.neu = u['neu']
                 l4u.syn = u['syn']
-                spikes = l4u.function(feature_maps_aug, burst_gain=lgn_out['burst_gain'], modulation=1.0)
+                spikes = l4u.function(feature_maps, burst_gain=lgn_out['burst_gain'], modulation=1.0)
                 l4_spikes.append(spikes)
 
-            return l4_spikes, feature_maps_aug
-
-    # TODO: This function needs to accept spikes from the transportation class
-    def function(self, frames_lms):
-        """
-        frames_lms: (T,H,W,3) input - L,M,S or cone-like channels.
-        Returns dictionary with layer outputs (spike lists).
-        """
-        # V1 L4
-        l4_spikes, feature_maps = self.v1.process(frames_lms)
-        # L2/3 units: one per V1 position for simplicity
-        Nv1 = len(self.v1.units)
-        n_l23 = Nv1
-        l23_units = []
-        for k in range(n_l23):
-            pres = [(k + delta) % Nv1 for delta in (-1, 0, 1)]
-            l23 = L23Unit(presyn_indices=pres, neuron_params=self.v2._default_neuron_params(),
-                          syn_params=self.v2._default_syn_params(), v1_reference=self.v1, facilitation_scale=1.2)
-            l23_units.append(l23)
-        T_bins = frames_lms.shape[0] - len(self.v1.strf.temporal) + 1
-        l23_spikes = [u.process(l4_spikes, T_bins) for u in l23_units]
-        # feedback map (not re-applied here for brevity)
-        l56 = L56Unit(self.v1, feedback_strength=0.6)
-        feedback_map = l56.function(l23_spikes, (self.H, self.W))
-        # V2 corners (callers rely on VisualCortex orchestration)
-        # For V2, compute spikes by mapping l4 spikes -> v2 units
-        v2_spikes = []
-        for u in self.v2.units:
-            # each V2UnitCorner needs l4 spikes and T_bins
-            # reuse existing objects
-            v2_spikes.append(u.process(l4_spikes, T_bins))
-        # V4 pooling
-        v4_spikes = self.v4.function(v2_spikes, frames_lms[..., 0])  # pass a representative luminance for normalization
-        # IT readout
-        it_spikes = self.it.function(v4_spikes)
-        return {'LGN': None, 'L4': l4_spikes, 'L23': l23_spikes, 'V2': v2_spikes, 'V4': v4_spikes, 'IT': it_spikes}
+            return l4_spikes, feature_maps
+        self.function = function
 
 
 # TODO: Temporary code block to test these cells. Input and output should be through files (which can be used for the demo)
@@ -836,8 +812,274 @@ if __name__ == '__main__':
     # create synthetic L,M,S-like channels (small random variations)
     frames = np.clip(np.random.randn(T, H, W, 3) * 0.02 + 0.5, 0.0, 1.0)
     vc = VisualCortex(H=H, W=W, fs=100.0, n_v1_units=36)
-    out = vc.process(frames)
+    out = vc.function(frames)
     print('L4 spike counts (first 8):', [len(s) for s in out['L4'][:8]])
     print('V2 spike counts (first 8):', [len(s) for s in out['V2'][:8]])
     print('IT activations (first 8):', [len(s) for s in out['IT'][:8]])
 """
+#!/usr/bin/env python3
+"""
+demo_vc_from_spikes.py
+
+Minimal demo that:
+ - reads simple CSV exports for Parasol, Midget, Small-Bi and DSGC cell lists
+ - converts those table rows into synthetic spike-time lists (Poisson / single-spike stylized)
+ - runs the VisualCortex pipeline (expects VisualCortex with v1.process(...) available)
+ - writes simple output files (L4/V2/IT spike counts and optional NPZ of spike lists)
+
+Usage:
+    python demo_vc_from_spikes.py \
+        --parasol parasol.csv \
+        --midget midget.csv \
+        --smallbi small_bi.csv \
+        --dsgc dsgc.csv \
+        --duration 1.0 \
+        --fs 100.0 \
+        --outdir /tmp/vc_demo
+
+Notes:
+ - Mapping from table fields -> firing rates is heuristic (scale_factor) and configurable.
+ - This script assumes your VisualCortex (and helper rgc_spikes_to_frames) are importable
+   as `from visual_strf_v1 import VisualCortex` or adjust the import below to point to
+   your module that defines VisualCortex.
+"""
+
+def poisson_spike_times(rate_hz, duration_s, rng):
+    """Return sorted spike times drawn from homogeneous Poisson process."""
+    if rate_hz <= 0:
+        return np.array([], dtype=float)
+    expected_n = rate_hz * duration_s
+    n = rng.poisson(expected_n)
+    if n <= 0:
+        return np.array([], dtype=float)
+    times = rng.random(n) * duration_s
+    return np.sort(times)
+
+
+def single_spike_if_flag(flag, duration_s, rng):
+    """If flag true-ish, return one random spike time in the window, else empty."""
+    if not flag:
+        return np.array([], dtype=float)
+    return np.array([float(rng.random() * duration_s)])
+
+
+def rows_to_spike_lists(df, duration_s, fs, scale_factor=10.0, time_field=None, integrated_field=None, flag_field=None):
+    """
+    Convert DataFrame rows to list of spike arrays.
+    - scale_factor: multiplier to map `integrated_field` (or response) to Hz
+    - fields are heuristics; if flag_field present use single_spike_if_flag
+    """
+    rng = np.random.default_rng(0)
+    spike_lists = []
+    for _, row in df.iterrows():
+        # priority: explicit time-field (list/CSV of times) -> integrated_field -> flag_field
+        if time_field and time_field in row and pd.notna(row[time_field]):
+            # attempt to parse a semicolon/comma-separated list of times
+            val = str(row[time_field])
+            parts = [p.strip() for p in val.replace(';', ',').split(',') if p.strip() != ""]
+            try:
+                times = np.array([float(p) for p in parts], dtype=float)
+                times = times[(times >= 0) & (times <= duration_s)]
+                times = np.sort(times)
+            except Exception:
+                times = np.array([], dtype=float)
+            spike_lists.append(times)
+            continue
+
+        if integrated_field and integrated_field in row and pd.notna(row[integrated_field]):
+            val = float(row[integrated_field])
+            rate = max(0.0, val) * float(scale_factor)  # heuristic mapping -> Hz
+            spike_lists.append(poisson_spike_times(rate, duration_s, rng))
+            continue
+
+        if flag_field and flag_field in row and pd.notna(row[flag_field]):
+            val = row[flag_field]
+            # treat any nonzero value as a spike flag
+            spike_lists.append(single_spike_if_flag(bool(val), duration_s, rng))
+            continue
+
+        # fallback: no useful columns -> empty spike train
+        spike_lists.append(np.array([], dtype=float))
+    return spike_lists
+
+
+def build_rgc_dict_from_csv(parasol_csv, midget_csv, smallbi_csv, dsgc_csv,
+                            duration_s, fs, scale_parasol=10.0, scale_midget=5.0, scale_smallbi=5.0):
+    """
+    Read CSVs and build rgc_spike_dict (parasol->M, midget->P, small_bi->K) and dsgc_spike_lists.
+    CSVs are expected to have one row per cell; heuristics applied depending on column names:
+      - look for 'response' or 'integrated_signal' as continuous drive to map to rate
+      - for DSGC look for 'spike_output' or 'integrated_signal'
+    """
+    parasol_df = pd.read_csv(parasol_csv) if parasol_csv and os.path.exists(parasol_csv) else pd.DataFrame()
+    midget_df = pd.read_csv(midget_csv) if midget_csv and os.path.exists(midget_csv) else pd.DataFrame()
+    smallbi_df = pd.read_csv(smallbi_csv) if smallbi_csv and os.path.exists(smallbi_csv) else pd.DataFrame()
+    dsgc_df = pd.read_csv(dsgc_csv) if dsgc_csv and os.path.exists(dsgc_csv) else pd.DataFrame()
+
+    # Heuristic field names
+    cont_fields = ['response', 'integrated_signal', 'response_value', 'rate']
+    flag_fields = ['spike_output', 'spike', 'spike_flag']
+
+    def pick_field(df, fields):
+        for f in fields:
+            if f in df.columns:
+                return f
+        return None
+
+    parasol_field = pick_field(parasol_df, cont_fields) or pick_field(parasol_df, flag_fields)
+    midget_field = pick_field(midget_df, cont_fields) or pick_field(midget_df, flag_fields)
+    smallbi_field = pick_field(smallbi_df, cont_fields) or pick_field(smallbi_df, flag_fields)
+    dsgc_cont = pick_field(dsgc_df, cont_fields)
+    dsgc_flag = pick_field(dsgc_df, flag_fields)
+
+    parasol_lists = rows_to_spike_lists(parasol_df, duration_s, fs, scale_factor=scale_parasol,
+                                        integrated_field=parasol_field if parasol_field in cont_fields else None,
+                                        flag_field=parasol_field if parasol_field in flag_fields else None)
+    midget_lists = rows_to_spike_lists(midget_df, duration_s, fs, scale_factor=scale_midget,
+                                       integrated_field=midget_field if midget_field in cont_fields else None,
+                                       flag_field=midget_field if midget_field in flag_fields else None)
+    smallbi_lists = rows_to_spike_lists(smallbi_df, duration_s, fs, scale_factor=scale_smallbi,
+                                        integrated_field=smallbi_field if smallbi_field in cont_fields else None,
+                                        flag_field=smallbi_field if smallbi_field in flag_fields else None)
+
+    # DSGC: this script will treat all DSGCs as belonging to a single direction bin (D=1).
+    # If you have direction labels, you can bucket them into separate direction lists.
+    if len(dsgc_df) > 0:
+        if dsgc_cont:
+            dsgc_lists = rows_to_spike_lists(dsgc_df, duration_s, fs, scale_factor=5.0,
+                                             integrated_field=dsgc_cont)
+        elif dsgc_flag:
+            dsgc_lists = rows_to_spike_lists(dsgc_df, duration_s, fs, flag_field=dsgc_flag)
+        else:
+            dsgc_lists = rows_to_spike_lists(dsgc_df, duration_s, fs, scale_factor=5.0,
+                                             integrated_field='integrated_signal' if 'integrated_signal' in dsgc_df.columns else None)
+    else:
+        dsgc_lists = []
+
+    # Build dict expected by VisualCortex.v1.process: keys 'parasol','midget','small_bi', optional '_T_bins'
+    T_bins = int(np.ceil(duration_s * fs))
+    rgc_dict = {
+        'parasol': parasol_lists,
+        'midget': midget_lists,
+        'small_bi': smallbi_lists,
+        '_T_bins': T_bins
+    }
+
+    # dsgc_spike_lists expected form: list over directions, each element a list-of-cells arrays.
+    # We'll put all DSGCs into a single direction bin if present.
+    dsgc_spike_lists = [dsgc_lists] if len(dsgc_lists) > 0 else None
+
+    return rgc_dict, dsgc_spike_lists
+
+
+def save_outputs(outdir, l4_spikes, v2_spikes, it_spikes):
+    os.makedirs(outdir, exist_ok=True)
+    # Save L4 counts and first-spike time
+    l4_summary = []
+    for i, s in enumerate(l4_spikes):
+        s = np.asarray(s, dtype=float)
+        l4_summary.append({'unit': i, 'n_spikes': s.size, 'first_spike': float(s[0]) if s.size else None})
+    pd.DataFrame(l4_summary).to_csv(os.path.join(outdir, 'l4_summary.csv'), index=False)
+
+    # V2 summary
+    v2_summary = []
+    for i, s in enumerate(v2_spikes):
+        s = np.asarray(s, dtype=float)
+        v2_summary.append({'unit': i, 'n_spikes': s.size, 'first_spike': float(s[0]) if s.size else None})
+    pd.DataFrame(v2_summary).to_csv(os.path.join(outdir, 'v2_summary.csv'), index=False)
+
+    # IT summary
+    it_summary = []
+    for i, s in enumerate(it_spikes):
+        s = np.asarray(s, dtype=float)
+        it_summary.append({'unit': i, 'n_spikes': s.size, 'first_spike': float(s[0]) if s.size else None})
+    pd.DataFrame(it_summary).to_csv(os.path.join(outdir, 'it_summary.csv'), index=False)
+
+    # Save raw spike lists as npz (could be large)
+    np.savez_compressed(os.path.join(outdir, 'spike_outputs.npz'),
+                        l4=l4_spikes, v2=v2_spikes, it=it_spikes)
+
+
+def main():
+    p = argparse.ArgumentParser()
+    p.add_argument('--parasol', default='parasol.csv')
+    p.add_argument('--midget', default='midget.csv')
+    p.add_argument('--smallbi', default='small_bi.csv')
+    p.add_argument('--dsgc', default='dsgc.csv')
+    p.add_argument('--duration', type=float, default=1.0, help='duration in seconds to synthesize')
+    p.add_argument('--fs', type=float, default=100.0, help='sampling frequency / frame rate for LGN dt')
+    p.add_argument('--outdir', default='vc_demo_out')
+    p.add_argument('--scale-parasol', type=float, default=10.0)
+    p.add_argument('--scale-midget', type=float, default=5.0)
+    p.add_argument('--scale-smallbi', type=float, default=5.0)
+    args = p.parse_args()
+
+    # Build synthetic spike lists from CSVs
+    rgc_dict, dsgc_spike_lists = build_rgc_dict_from_csv(
+        parasol_csv=args.parasol, midget_csv=args.midget, smallbi_csv=args.smallbi, dsgc_csv=args.dsgc,
+        duration_s=args.duration, fs=args.fs,
+        scale_parasol=args.scale_parasol, scale_midget=args.scale_midget, scale_smallbi=args.scale_smallbi
+    )
+
+    print("Constructed RGC dict keys:", list(rgc_dict.keys()))
+    if dsgc_spike_lists is not None:
+        print("DSGC direction bins:", len(dsgc_spike_lists), "cells in bin:", len(dsgc_spike_lists[0]))
+
+    # Instantiate VisualCortex
+    vc = VisualCortex(H=64, W=64, fs=args.fs, n_v1_units=36)
+
+    # Run V1 pipeline with spikes as input (this uses the rgc_spikes_to_frames + v1.process path)
+    l4_spikes, feature_maps = vc.v1.process(rgc_spike_dict=rgc_dict, dsgc_spike_lists=dsgc_spike_lists)
+
+    # L2/3, V2, V4, IT orchestration: your VisualCortex.function orchestrates these steps.
+    # If you want the full pipeline, call vc.function(...) which expects frames normally.
+    # However the VisualCortex.function in your code earlier called self.v1.process internally;
+    # so to continue the pipeline we can call vc.function with synthesized frames too.
+    # We'll synthesize frames (same helper used earlier) by calling rgc_spikes_to_frames directly if available.
+    # prefer using the VisualCortex helper if present
+    dt = 1.0 / args.fs
+    T_bins = int(np.ceil(args.duration * args.fs))
+    try:
+
+        frames = rgc_spikes_to_frames(rgc_dict, T_bins, dt, vc.H, vc.W)
+        outputs = vc.function(frames)  # full pipeline orchestration
+        l23_spikes = outputs.get('L23', [])
+        v2_spikes = outputs.get('V2', [])
+        v4_spikes = outputs.get('V4', [])
+        it_spikes = outputs.get('IT', [])
+    except Exception:
+        # fallback: we already have l4_spikes and feature_maps; try to at least call V2/V4/IT manually if objects exist
+        try:
+            # L23 (if you have L23Unit class and v1.fs metadata)
+            T_bins = int(feature_maps.shape[0])
+            # Create simple L23 units mirroring earlier orchestration (lightweight)
+            Nv1 = len(vc.v1.units)
+            l23_units = []
+            for k in range(Nv1):
+                pres = [(k + delta) % Nv1 for delta in (-1, 0, 1)]
+                l23 = L23Unit(presyn_indices=pres, neuron_params=vc.v2._default_neuron_params(),
+                              syn_params=vc.v2._default_syn_params(), v1_reference=vc.v1, facilitation_scale=1.2)
+                l23_units.append(l23)
+            l23_spikes = [u.function(l4_spikes, T_bins) for u in l23_units]
+        except Exception:
+            l23_spikes = []
+        try:
+            v2_spikes = [u.function(l4_spikes, T_bins) for u in vc.v2.units]
+        except Exception:
+            v2_spikes = []
+        try:
+            v4_spikes = vc.v4.function(v2_spikes, np.zeros((feature_maps.shape[0], vc.W)))
+        except Exception:
+            v4_spikes = []
+        try:
+            it_spikes = vc.it.function(v4_spikes)
+        except Exception:
+            it_spikes = []
+
+    # Save summaries
+    save_outputs(args.outdir, l4_spikes, v2_spikes, it_spikes)
+    print("Wrote outputs to", args.outdir)
+
+
+if __name__ == '__main__':
+    main()
