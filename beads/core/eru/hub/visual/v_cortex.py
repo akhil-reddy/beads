@@ -4,6 +4,8 @@ import pickle
 import numpy as np
 from scipy import sparse
 from scipy.signal import lfilter
+from scipy.spatial import KDTree
+
 from beads.core.eru.interneuron import ShortTermSynapse, MultiCompartmentNeuron, Receptor
 
 
@@ -13,38 +15,94 @@ from beads.core.eru.interneuron import ShortTermSynapse, MultiCompartmentNeuron,
 # -----------------------------------------------------------------------------
 def generate_weight_matrix(src_locs, dst_locs, func_type, **kwargs):
     """
-    Generates sparse weight matrices for connections between layers.
-    Replaces slow 2D convolutions.
+    Generates sparse weight matrices for connections between layers
+    using spatial indexing (cKDTree) for O(N) memory efficiency.
     """
-    if len(src_locs) == 0: return None
+    if len(src_locs) == 0 or len(dst_locs) == 0:
+        return None
 
-    # Calculate distances (Broadcasting)
-    # Note: For production with >10k neurons, use scipy.spatial.cKDTree
-    dx = dst_locs[:, 0:1] - src_locs[:, 0:1].T
-    dy = dst_locs[:, 1:2] - src_locs[:, 1:2].T
-    dist_sq = dx ** 2 + dy ** 2
+    # 1. Determine Search Radius
+    # We analytically calculate the distance where weights naturally drop
+    # below the threshold (0.005), so we don't compute useless connections.
+    threshold = 0.005
+    radius_factor = 3.5  # approx sqrt(-2 * ln(0.005))
 
-    w = np.zeros_like(dist_sq)
+    if func_type == 'DoG':
+        sigma_c = kwargs.get('sigma_c', 1.0)
+        sigma_s = kwargs.get('sigma_s', 3.0)
+        # The wider surround sigma dictates the reach
+        search_radius = max(sigma_c, sigma_s) * radius_factor
 
-    if func_type == 'DoG':  # Retina -> LGN (Center-Surround)
-        s_c = kwargs.get('sigma_c', 1.0)
-        s_s = kwargs.get('sigma_s', 3.0)
-        w = np.exp(-dist_sq / (2 * s_c ** 2)) - 0.5 * np.exp(-dist_sq / (2 * s_s ** 2))
+    elif func_type == 'Gabor':
+        sigma = kwargs.get('sigma', 2.0)
+        search_radius = sigma * radius_factor
 
-    elif func_type == 'Gabor':  # LGN -> V1 (Orientation Selective)
+    elif func_type == 'Gaussian':
+        sigma = kwargs.get('sigma', 2.0)
+        search_radius = sigma * radius_factor
+    else:
+        raise ValueError(f"Unknown func_type: {func_type}")
+
+    # 2. Efficient Spatial Search
+    # Build trees for fast nearest-neighbor lookup
+    tree_src = KDTree(src_locs)
+    tree_dst = KDTree(dst_locs)
+
+    # sparse_distance_matrix returns a COO-style sparse matrix of distances
+    # only for pairs within search_radius.
+    dist_mat = tree_dst.sparse_distance_matrix(
+        tree_src,
+        max_distance=search_radius,
+        output_type='coo_matrix'
+    )
+
+    if dist_mat.nnz == 0:
+        return sparse.csr_matrix((len(dst_locs), len(src_locs)))
+
+    # 3. Vectorized Weight Calculation on Sparse Data
+    rows = dist_mat.row
+    cols = dist_mat.col
+    dist_sq = dist_mat.data ** 2
+
+    weights = np.zeros_like(dist_sq)
+
+    if func_type == 'DoG':
+        # Explicitly extract parameters here for clarity/safety
+        sigma_c = kwargs.get('sigma_c', 1.0)
+        sigma_s = kwargs.get('sigma_s', 3.0)
+
+        t1 = np.exp(-dist_sq / (2 * sigma_c ** 2))
+        t2 = 0.5 * np.exp(-dist_sq / (2 * sigma_s ** 2))
+        weights = t1 - t2
+
+    elif func_type == 'Gaussian':
+        sigma = kwargs.get('sigma', 2.0)
+        weights = np.exp(-dist_sq / (2 * sigma ** 2))
+
+    elif func_type == 'Gabor':
+        # Explicitly extract parameters
         sigma = kwargs.get('sigma', 2.0)
         theta = kwargs.get('theta', 0.0)
-        lam = kwargs.get('lambda', 5.0)
+        lam = kwargs.get('lambda', 5.0)  # 'lambda' is a reserved keyword, usually 'lam' is safer
+
+        # Calculate Oriented Distances
+        dx = dst_locs[rows, 0] - src_locs[cols, 0]
+        dy = dst_locs[rows, 1] - src_locs[cols, 1]
+
         x_th = dx * np.cos(theta) + dy * np.sin(theta)
-        w = np.exp(-dist_sq / (2 * sigma ** 2)) * np.cos(2 * np.pi * x_th / lam)
+        weights = np.exp(-dist_sq / (2 * sigma ** 2)) * np.cos(2 * np.pi * x_th / lam)
 
-    elif func_type == 'Gaussian':  # V1->V2, Pooling
-        sigma = kwargs.get('sigma', 2.0)
-        w = np.exp(-dist_sq / (2 * sigma ** 2))
+    # 4. Final Thresholding
+    # Even within radius, Gabor/DoG zero-crossings might produce near-zero weights
+    mask = np.abs(weights) >= threshold
 
-    # Sparsify
-    w[np.abs(w) < 0.005] = 0
-    return sparse.csr_matrix(w)
+    # Construct CSR matrix
+    W = sparse.csr_matrix(
+        (weights[mask], (rows[mask], cols[mask])),
+        shape=(len(dst_locs), len(src_locs))
+    )
+
+    return W
 
 
 def bin_spikes(spike_lists, T_bins, dt):
@@ -100,7 +158,7 @@ class LGNLayer:
 
         for _ in range(self.n):
             neu = MultiCompartmentNeuron(neuron_params.copy())
-            neu.add_receptor(Receptor(g_max=1.5e-9, E_rev=0.0, tau_rise=0.002, location='soma'))
+            neu.add_receptor(Receptor(g_max=1.5e-9, E_rev=0.0, tau_rise=0.002, tau_decay=0.002, location='soma'))
             self.units.append(neu)
 
     def connect(self, rgc_locs, rgc_name):
@@ -117,7 +175,7 @@ class LGNLayer:
 
         self.weights[rgc_name] = generate_weight_matrix(rgc_locs, self.locs, 'DoG', **params)
 
-    def process(self, inputs_dict, feedback_gain=None):
+    def function(self, inputs_dict, feedback_gain=None):
         """
         inputs_dict: { 'parasol': mat, 'dsgc': mat, ... }
         """
@@ -177,7 +235,7 @@ class V1L4:
         # K -> V1 (Blobs/Color)
         self.w_K = generate_weight_matrix(locs_K, self.locs, 'Gaussian', sigma=3.0)
 
-    def process(self, sM, sP, sK):
+    def function(self, sM, sP, sK):
         drive = np.zeros((self.n, sM.shape[1]))
         if self.w_M is not None: drive += self.w_M.dot(sM) * 1.0
         if self.w_P is not None: drive += self.w_P.dot(sP) * 0.8
@@ -202,9 +260,9 @@ class V1L23:
         # Lateral weights (Gaussian) for context
         self.w_lat = generate_weight_matrix(self.locs, self.locs, 'Gaussian', sigma=3.0)
         self.units = [MultiCompartmentNeuron(params.copy()) for _ in range(self.n)]
-        for u in self.units: u.add_receptor(Receptor(g_max=1.2e-9, location='soma'))
+        for u in self.units: u.add_receptor(Receptor(g_max=1.5e-9, E_rev=0.0, tau_rise=0.002, tau_decay=0.002, location='soma'))
 
-    def process(self, l4_mat):
+    def function(self, l4_mat):
         # 1. Feedforward
         drive = l4_mat.copy()
         # 2. Lateral Context (Sum of neighbors)
@@ -251,10 +309,10 @@ class V2Layer:
             # Connect to 2 V1 units (likely different orientations)
             ids = rng.choice(n_v1, 2, replace=False)
             neu = MultiCompartmentNeuron(params.copy())
-            neu.add_receptor(Receptor(g_max=1e-9, location='soma'))
+            neu.add_receptor(Receptor(g_max=1e-9, E_rev=0.0, tau_rise=0.002, tau_decay=0.002, location='soma'))
             self.units.append({'ids': ids, 'neu': neu})
 
-    def process(self, v1_mat):
+    def function(self, v1_mat):
         out = []
         for u in self.units:
             # Coincidence Detection (Multiplication / AND)
@@ -278,10 +336,10 @@ class V4Layer:
             # Pool from multiple V2 units
             ids = rng.choice(n_in, min(8, n_in), replace=False)
             neu = MultiCompartmentNeuron(params.copy())
-            neu.add_receptor(Receptor(g_max=1e-9, location='soma'))
+            neu.add_receptor(Receptor(g_max=1e-9, E_rev=0.0, tau_rise=0.002, tau_decay=0.002, location='soma'))
             self.units.append({'ids': ids, 'neu': neu})
 
-    def process(self, v2_mat):
+    def function(self, v2_mat):
         out = []
         for u in self.units:
             # Sum pooling + Normalization
@@ -300,7 +358,7 @@ class ITLayer:
         # Normalize
         self.protos /= (np.linalg.norm(self.protos, axis=1, keepdims=True) + 1e-9)
 
-    def process(self, v4_spikes):
+    def function(self, v4_spikes):
         # Rate coding
         rates = np.array([len(s) for s in v4_spikes])
         norm = np.linalg.norm(rates) + 1e-9
@@ -314,7 +372,8 @@ class ITLayer:
 # -----------------------------------------------------------------------------
 class VisualCortex:
     def __init__(self, H=64, W=64, fs=100.0):
-        self.fs = fs;
+        self.inputs = None
+        self.fs = fs
         self.dt = 1.0 / fs
 
         # Standard Params
@@ -345,7 +404,7 @@ class VisualCortex:
         for k, path in file_map.items():
             coords, spikes = adap.extract_from_pkl(path, self.dt)
             self.inputs[k] = {'c': coords, 's': spikes}
-            print(f"    - {k}: {len(spikes)} cells loaded.")
+            print(f" - {k}: {len(spikes)} cells loaded.")
 
         print("[2] Building Connectivity (Vectorized)...")
         # Wiring Logic:
@@ -360,7 +419,7 @@ class VisualCortex:
         # LGN -> V1
         self.v1_l4.connect(self.lgn_M.locs, self.lgn_P.locs, self.lgn_K.locs)
 
-    def run(self, duration):
+    def function(self, duration):
         tb = int(duration * self.fs)
         print(f"\n[3] Running Simulation ({duration}s)...")
 
@@ -370,26 +429,26 @@ class VisualCortex:
         # --- LGN ---
         print("    > LGN processing...")
         # Note: M layer gets inputs from both Parasol and DSGC
-        lgn_m = self.lgn_M.process({'parasol': mats['parasol'], 'dsgc': mats['dsgc']}, self.gain_cache)
-        lgn_p = self.lgn_P.process({'midget': mats['midget']}, self.gain_cache)
-        lgn_k = self.lgn_K.process({'small_bi': mats['small_bi']}, self.gain_cache)
+        lgn_m = self.lgn_M.function({'parasol': mats['parasol'], 'dsgc': mats['dsgc']}, self.gain_cache)
+        lgn_p = self.lgn_P.function({'midget': mats['midget']}, self.gain_cache)
+        lgn_k = self.lgn_K.function({'small_bi': mats['small_bi']}, self.gain_cache)
 
         # --- V1 ---
         print("    > V1 (L4 -> L2/3 -> L5/6)...")
-        l4_out = self.v1_l4.process(bin_spikes(lgn_m, tb, self.dt),
+        l4_out = self.v1_l4.function(bin_spikes(lgn_m, tb, self.dt),
                                     bin_spikes(lgn_p, tb, self.dt),
                                     bin_spikes(lgn_k, tb, self.dt))
 
-        l23_out = self.v1_l23.process(bin_spikes(l4_out, tb, self.dt))
+        l23_out = self.v1_l23.function(bin_spikes(l4_out, tb, self.dt))
 
         # Compute Feedback Gain for next loop (or save for analysis)
         self.gain_cache = self.v1_l56.compute_feedback(bin_spikes(l23_out, tb, self.dt))
 
         # --- Higher Areas ---
         print("    > Higher Areas (V2 -> V4 -> IT)...")
-        v2_out = self.v2.process(bin_spikes(l23_out, tb, self.dt))
-        v4_out = self.v4.process(bin_spikes(v2_out, tb, self.dt))
-        it_out = self.it.process(v4_out)
+        v2_out = self.v2.function(bin_spikes(l23_out, tb, self.dt))
+        v4_out = self.v4.function(bin_spikes(v2_out, tb, self.dt))
+        it_out = self.it.function(v4_out)
 
         return {
             'LGN_M': lgn_m, 'LGN_P': lgn_p, 'LGN_K': lgn_k,
@@ -399,9 +458,6 @@ class VisualCortex:
 
 
 # TODO: Temporary code block to test these cells. Input and output should be through files (which can be used for the demo)
-# -----------------------------------------------------------------------------
-# 7. MAIN
-# -----------------------------------------------------------------------------
 def demo():
     parser = argparse.ArgumentParser()
     parser.add_argument('--parasol', default='out/visual/parasol.pkl')
@@ -424,7 +480,7 @@ def demo():
     })
 
     # Run
-    res = vc.run(args.duration)
+    res = vc.function(args.duration)
 
     # Report
     print("\n[4] Results Summary:")
@@ -436,7 +492,7 @@ def demo():
 
     # Save
     np.savez(args.out, **res)
-    print(f"    Saved full outputs to {args.out}")
+    print(f" Saved full outputs to {args.out}")
 
 
 if __name__ == "__main__":

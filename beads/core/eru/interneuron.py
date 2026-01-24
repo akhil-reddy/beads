@@ -19,7 +19,7 @@ def vtrap(x):
 # Receptor (double exponential) with optional NMDA Mg2+ voltage dependence
 # ----------------------------------------------------------------------------
 class Receptor:
-    def __init__(self, g_max, E_rev, tau_rise, tau_decay,
+    def __init__(self, g_max, E_rev, tau_rise=0.002, tau_decay=0.002,
                  location='soma', name=None,
                  voltage_dependent=False, mg_conc=1.0, mg_slope=0.062, mg_scale=3.57):
         """
