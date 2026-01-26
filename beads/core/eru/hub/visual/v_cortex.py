@@ -458,7 +458,7 @@ class VisualCortex:
 
 
 # TODO: Temporary code block to test these cells. Input and output should be through files (which can be used for the demo)
-def demo():
+def test():
     parser = argparse.ArgumentParser()
     parser.add_argument('--parasol', default='out/visual/parasol.pkl')
     parser.add_argument('--midget', default='out/visual/midget.pkl')
@@ -496,4 +496,4 @@ def demo():
 
 
 if __name__ == "__main__":
-    demo()
+    test()
