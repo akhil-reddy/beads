@@ -3,7 +3,7 @@
 </div>
 
 
-A micro-collaborative ecosystem that enables multi-modal cognition, task autonomy and adaptive intelligence.
+A micro-collaborative ecosystem that enables multi-modal perception.
 
 For context on this project, I would highly recommend a read of the below blog.
 
@@ -11,7 +11,7 @@ For context on this project, I would highly recommend a read of the below blog.
 |------------------------------------------------------------------------------------------|
 | [![Blog](https://img.shields.io/badge/Reader-Friendly-blue)](https://xipher19.github.io) |
 
-# [WIP] Beads Framework
+# Beads Framework
 
 ## Documentation Style
 
@@ -28,10 +28,6 @@ The Beads framework is licensed under ARUL 1.0, as found in the LICENSE file.
 
 * For Communication Beads, click [here](https://github.com/akhil-reddy/beads/tree/main/beads/core/cmu)
 * For Environmental Response Beads, click [here](https://github.com/akhil-reddy/beads/tree/main/beads/core/eru)
-
-## How to use?
-
-All components aren't integrated yet. Please use them individually (until further notice). 
 
 ### Disclaimer
 
